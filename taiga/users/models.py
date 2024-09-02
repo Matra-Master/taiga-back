@@ -155,6 +155,8 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     email_token = models.CharField(max_length=200, null=True, blank=True, default=None,
                          verbose_name=_("email token"))
+    clockify_token = models.CharField(max_length=200, null=True, blank=True, default=None,
+                         verbose_name=_("clockify token"))
 
     new_email = models.EmailField(_("new email address"), null=True, blank=True)
     verified_email = models.BooleanField(null=False, blank=False, default=True)
@@ -286,6 +288,7 @@ class User(AbstractBaseUser, PermissionsMixin):
             self.date_cancelled = timezone.now()
             self.new_email = "{}@taiga.io".format(self.username)
             self.email_token = None
+            self.clockify_token = None
             self.save()
         self.auth_data.all().delete()
 
