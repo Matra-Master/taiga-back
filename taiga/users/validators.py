@@ -30,7 +30,7 @@ class UserValidator(validators.ModelValidator):
     class Meta:
         model = User
         fields = ("username", "full_name", "color", "bio", "lang",
-                  "theme", "timezone", "is_active")
+                  "theme", "timezone", "is_active", "clockify_key")
 
     def validate_username(self, attrs, source):
         value = attrs[source]
@@ -57,6 +57,24 @@ class UserValidator(validators.ModelValidator):
 
         if re.search(r"http[s]?:", value):
             raise ValidationError(_("Invalid full name"))
+
+        return attrs
+
+    def validate_clockify_key(self, attrs, source):
+        value = attrs[source]
+
+        # Check if clockify_key is provided
+        if not value:
+            return attrs
+
+        # Build the command with user token
+        command = ["CLOCKIFY_INTERACTIVE=0", "clockify-cli", "me", "--format", "{{ .Name }}", "--token", value]
+
+        # Execute the command and capture output/errors
+        try:
+            process = subprocess.run(command, capture_output=True, check=True)
+        except subprocess.CalledProcessError as e:
+            raise ValidationError(_("Invalid Clockify token. Please check your token and try again."))
 
         return attrs
 

@@ -136,6 +136,13 @@ class UsersViewSet(ModelCrudViewSet):
                 }
             )
             email.send()
+        new_clockify_key = request.DATA.pop('clockify_key', None)
+        if new_clockify_key is not None:
+            duplicated_clockify_key = models.User.objects.filter(clockify_key=new_clockify_key).exists()
+            if duplicated_clockify_key:
+                raise exc.WrongArguments(_("Same key already exists"))
+            request.user.clockify_key = new_clockify_key
+            request.user.save(update_fields=["clockify_key"])
 
         return super().partial_update(request, *args, **kwargs)
 
