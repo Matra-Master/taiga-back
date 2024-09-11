@@ -12,7 +12,7 @@ class Migration(migrations.Migration):
     operations = [
         migrations.AddField(
             model_name='user',
-            name='clockify_token',
-            field=models.CharField(blank=True, default=None, max_length=200, null=True, verbose_name='clockify token'),
+            name='clockify_key',
+            field=models.CharField(blank=True, default=None, max_length=200, null=True, verbose_name='clockify key'),
         ),
     ]
