@@ -5,4 +5,4 @@ from .models import ClockifyProfile
 
 @admin.register(ClockifyProfile)
 class ClockifyProfileAdmin(admin.ModelAdmin):
-    list_display = ['user', 'clockify_api_key']
+    list_display = ['user', 'clockify_key']

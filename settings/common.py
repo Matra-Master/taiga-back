@@ -683,3 +683,7 @@ if "test" in sys.argv:
     print("Try: \033[1;33mpy.test\033[0m")
     sys.exit(0)
 # NOTE: DON'T INSERT MORE SETTINGS AFTER THIS LINE
+
+INSTALLED_APPS += [
+        "clockify",
+]
