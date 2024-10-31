@@ -46,3 +46,25 @@ Help us keep the Taiga Community open and inclusive. Please read and follow our 
 Every code patch accepted in Taiga codebase is licensed under [MPL 2.0](LICENSE). You must be careful to not include any code that can not be licensed under this license.
 
 Please read carefully [our license](LICENSE) and ask us if you have any questions as well as the [Contribution policy](https://github.com/taigaio/taiga-back/blob/main/CONTRIBUTING.md).
+
+## Install Dev environment
+
+```bash
+sudo apt-get install -y python3 python3-pip python3-virtualenv python-dev python3-dev python-pip python-virtualenv
+sudo apt-get install -y libxml2-dev libxslt-dev
+```
+
+
+## Start Dev environment
+
+```bash
+source .venv/bin/activate
+```
+
+```fish
+source .venv/bin/activate.fish
+```
+
+```powershell
+source .venv/bin/activate.ps1
+```
