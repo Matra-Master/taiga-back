@@ -1,0 +1,15 @@
+allow-archived-tags: false
+allow-incomplete: true
+allow-name-for-id: true
+allow-project-name: true
+description-autocomplete: false
+description-autocomplete-days: 0
+interactive: false
+interactive-page-size: 7
+lang: en
+log-level: none
+search-project-with-client: false
+show-client: false
+show-task: true
+show-total-duration: false
+time-zone: America/Argentina/Buenos_Aires
