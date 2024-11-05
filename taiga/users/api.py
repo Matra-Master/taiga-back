@@ -42,6 +42,11 @@ from .signals import user_cancel_account as user_cancel_account_signal
 from .signals import user_change_email as user_change_email_signal
 from .throttling import UserDetailRateThrottle, UserUpdateRateThrottle
 
+from settings.common import TUXDI_CLOKIFY_WORKSPACE_ID
+import requests as rq
+import json
+import datetime
+
 class UsersViewSet(ModelCrudViewSet):
     permission_classes = (permissions.UserPermission,)
     admin_serializer_class = serializers.UserAdminSerializer
@@ -451,6 +456,47 @@ class UsersViewSet(ModelCrudViewSet):
 
         return response.Ok(response_data)
 
+    @list_route(methods=["POST"])
+    def start_clockify_timer(self, request, pk=None):
+        url = f"https://api.clockify.me/api/v1/workspaces/{TUXDI_CLOKIFY_WORKSPACE_ID}/time-entries"
+        data = {
+            "customAttributes": [],
+            "customFields": []
+        }
+        session = rq.Session()
+        session.headers["X-Api-Key"] = request.DATA['clockifyKey']
+        session.headers["Content-Type"] = "application/json"
+        
+        workspace = session.post(url, json = data)
+        return response.Ok({"message": "Clockify time entry started"})
+
+    @list_route(methods=["POST"])
+    def stop_clockify_timer(self, request, pk=None):
+        user_data_url = f"https://api.clockify.me/api/v1/user"
+        
+        session = rq.Session()
+        session.headers["X-Api-Key"] = request.DATA['clockifyKey']
+        session.headers["Content-Type"] = "application/json"
+        user_data = session.get(user_data_url).json()
+        user_id = user_data['id']
+
+        time_entries_url = f"https://api.clockify.me/api/v1/workspaces/{TUXDI_CLOKIFY_WORKSPACE_ID}/user/{user_id}/time-entries"
+
+        time_entires = session.get(time_entries_url).json()
+
+        last_time_entrie = time_entires[0]
+
+        stop_timer_data = {
+            "end": datetime.datetime.now().isoformat(timespec='seconds')+"Z"
+        }
+        stop_response = session.patch(time_entries_url,json=stop_timer_data)
+
+        data = {
+            "customAttributes": [],
+            "customFields": []
+        }
+
+        return response.Ok({"message": "Clockify timer stoped"})
 
 ######################################################
 # Role

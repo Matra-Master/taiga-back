@@ -32,6 +32,8 @@ DATABASES = {
     }
 }
 
+TUXDI_CLOKIFY_WORKSPACE_ID = "66fea5d3e020e6093415ba1d"
+
 DEFAULT_AUTO_FIELD = "django.db.models.AutoField"
 
 
