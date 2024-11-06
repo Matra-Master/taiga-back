@@ -467,6 +467,8 @@ class UsersViewSet(ModelCrudViewSet):
         session.headers["X-Api-Key"] = request.DATA['clockifyKey']
         session.headers["Content-Type"] = "application/json"
         
+        data["description"] = f"TG-{request.DATA['ref']} {request.DATA['subject']}"
+
         workspace = session.post(url, json = data)
         return response.Ok({"message": "Clockify time entry started"})
 
