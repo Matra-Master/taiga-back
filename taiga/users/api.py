@@ -464,22 +464,38 @@ class UsersViewSet(ModelCrudViewSet):
             "customFields": []
         }
         session = rq.Session()
+        clockify_key = request.DATA.get('clockifyKey', None)
+        if(clockify_key is None):
+            return response.BadRequest({"error_message": "Clockify must be sended"})
+
+        session.headers["X-Api-Key"] = clockify_key
         session.headers["X-Api-Key"] = request.DATA['clockifyKey']
         session.headers["Content-Type"] = "application/json"
         
         data["description"] = f"TG-{request.DATA['ref']} {request.DATA['subject']}"
 
-        workspace = session.post(url, json = data)
-        return response.Ok({"message": "Clockify time entry started"})
+        clockify_response = session.post(url, json = data)
+        if(clockify_response.ok):
+            return response.Ok({"message": "Clockify time entry started"})
+        else:
+            return response.BadRequest({"error_message": clockify_response.json().get('message',"")})
 
     @list_route(methods=["POST"])
     def stop_clockify_timer(self, request, pk=None):
         user_data_url = f"https://api.clockify.me/api/v1/user"
         
         session = rq.Session()
-        session.headers["X-Api-Key"] = request.DATA['clockifyKey']
+        clockify_key = request.DATA.get('clockifyKey',None)
+        if(clockify_key is None):
+            return response.BadRequest({"error_message": "Clockify must be sended"})
+
+        session.headers["X-Api-Key"] = clockify_key
         session.headers["Content-Type"] = "application/json"
-        user_data = session.get(user_data_url).json()
+        user_data_clocki_response = session.get(user_data_url)
+        if(not user_data_clocki_response.ok):
+            return response.BadRequest({"error_message": user_data_clocki_response.json().get('message',"")})
+
+        user_data = user_data_clocki_response.json()
         user_id = user_data['id']
 
         time_entries_url = f"https://api.clockify.me/api/v1/workspaces/{TUXDI_CLOKIFY_WORKSPACE_ID}/user/{user_id}/time-entries"
@@ -492,13 +508,10 @@ class UsersViewSet(ModelCrudViewSet):
             "end": datetime.datetime.now().isoformat(timespec='seconds')+"Z"
         }
         stop_response = session.patch(time_entries_url,json=stop_timer_data)
-
-        data = {
-            "customAttributes": [],
-            "customFields": []
-        }
-
-        return response.Ok({"message": "Clockify timer stoped"})
+        if(stop_respone.ok):
+            return response.Ok({"message": "Clockify timer stoped"})
+        else: 
+            return response.BadRequest({"error_message": stop_response.json().get('message',"")})
 
 ######################################################
 # Role
