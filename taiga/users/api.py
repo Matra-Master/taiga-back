@@ -508,7 +508,7 @@ class UsersViewSet(ModelCrudViewSet):
             "end": datetime.datetime.now().isoformat(timespec='seconds')+"Z"
         }
         stop_response = session.patch(time_entries_url,json=stop_timer_data)
-        if(stop_respone.ok):
+        if(stop_response.ok):
             return response.Ok({"message": "Clockify timer stoped"})
         else: 
             return response.BadRequest({"error_message": stop_response.json().get('message',"")})
