@@ -287,6 +287,7 @@ class ProjectSerializer(serializers.LightSerializer):
 
     tags = Field()
     tags_colors = MethodField()
+    clockify_id = Field()
 
     default_epic_status = Field(attr="default_epic_status_id")
     default_points = Field(attr="default_points_id")

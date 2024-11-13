@@ -281,6 +281,7 @@ class Project(ProjectDefaults, TaggedMixin, TagsColorsMixin, models.Model):
     total_activity_last_year = models.PositiveIntegerField(null=False, blank=False, default=0,
                                                            verbose_name=_("activity last year"),
                                                            db_index=True)
+    clockify_id = models.CharField(max_length=36, editable=True, null=True)
 
     _importing = None
 
