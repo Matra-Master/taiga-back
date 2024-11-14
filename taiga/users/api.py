@@ -469,7 +469,6 @@ class UsersViewSet(ModelCrudViewSet):
             return response.BadRequest({"error_message": "Clockify must be sended"})
 
         session.headers["X-Api-Key"] = clockify_key
-        session.headers["X-Api-Key"] = request.DATA['clockifyKey']
         session.headers["Content-Type"] = "application/json"
         
         data["description"] = f"TG-{request.DATA['ref']} {request.DATA['subject']}"
