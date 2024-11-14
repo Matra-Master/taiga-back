@@ -518,8 +518,10 @@ class UsersViewSet(ModelCrudViewSet):
 
         time_entries_url = f"https://api.clockify.me/api/v1/workspaces/{TUXDI_CLOKIFY_WORKSPACE_ID}/user/{user_id}/time-entries"
 
-        time_entires = session.get(time_entries_url).json()
-
+        time_entires_response = session.get(time_entries_url)
+        if (not time_entires_response.ok):
+            return response.BadRequest({"error_message": time_entires_response.json().get('message',"")})
+        time_entires = time_entires_response.json()
         last_time_entrie = time_entires[0]
 
         stop_timer_data = {
