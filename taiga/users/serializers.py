@@ -44,6 +44,7 @@ class UserSerializer(serializers.LightSerializer):
     gravatar_id = MethodField()
     roles = MethodField()
     clockify_key = Field()
+    clockify_id = Field()
 
     def get_full_name_display(self, obj):
         return obj.get_full_name() if obj else ""
