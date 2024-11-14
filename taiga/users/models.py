@@ -179,6 +179,7 @@ class User(AbstractBaseUser, PermissionsMixin):
                                                                          "public project"))
 
     clockify_key = models.CharField(max_length=48, editable=True, null=True, unique=True)
+    clockify_id = models.CharField(max_length=24, editable=True, null=True)
     _cached_memberships = None
     _cached_liked_ids = None
     _cached_watched_ids = None
