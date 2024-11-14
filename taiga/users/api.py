@@ -501,12 +501,20 @@ class UsersViewSet(ModelCrudViewSet):
 
         session.headers["X-Api-Key"] = clockify_key
         session.headers["Content-Type"] = "application/json"
-        user_data_clocki_response = session.get(user_data_url)
-        if(not user_data_clocki_response.ok):
-            return response.BadRequest({"error_message": user_data_clocki_response.json().get('message',"")})
 
-        user_data = user_data_clocki_response.json()
-        user_id = user_data['id']
+        try:
+            user = self.model.objects.get(clockify_key=clockify_key)
+        except models.User.DoesNotExist:
+            raise exc.WrongArguments(_("There is no user with that Clockify key"))
+
+        if(user.clockify_id is None):
+            user_data_clocki_response = session.get(user_data_url)
+            if(not user_data_clocki_response.ok):
+                return response.BadRequest({"error_message": user_data_clocki_response.json().get('message',"")})
+
+            user.clockify_id = user_data_clocki_response.json()['id']
+            user.save()
+        user_id = user.clockify_id
 
         time_entries_url = f"https://api.clockify.me/api/v1/workspaces/{TUXDI_CLOKIFY_WORKSPACE_ID}/user/{user_id}/time-entries"
 
