@@ -466,7 +466,7 @@ class UsersViewSet(ModelCrudViewSet):
         session = rq.Session()
         clockify_key = request.DATA.get('clockifyKey', None)
         if(clockify_key is None):
-            return response.BadRequest({"error_message": "Clockify must be sended"})
+            return response.BadRequest({"error_message": "clockifyKey must be sended"})
 
         session.headers["X-Api-Key"] = clockify_key
         session.headers["Content-Type"] = "application/json"
