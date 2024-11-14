@@ -465,14 +465,24 @@ class UsersViewSet(ModelCrudViewSet):
         }
         session = rq.Session()
         clockify_key = request.DATA.get('clockifyKey', None)
+
+        tg_id = request.DATA.get('ref', None)
+        tg_subject = request.DATA.get('subject', None)
+        clockify_description = f"TG-{tg_id or ''} {tg_subject or ''}"
+
+        project_id = request.DATA.get('projectClockifyId', None)
+
         if(clockify_key is None):
-            return response.BadRequest({"error_message": "Clockify must be sended"})
+            return response.BadRequest({"error_message": "clockifyKey must be sended"})
 
         session.headers["X-Api-Key"] = clockify_key
-        session.headers["X-Api-Key"] = request.DATA['clockifyKey']
         session.headers["Content-Type"] = "application/json"
-        
-        data["description"] = f"TG-{request.DATA['ref']} {request.DATA['subject']}"
+
+        data["description"] = clockify_description
+        data["billable"] = False
+
+        if(project_id is not None):
+            data["projectId"] = project_id
 
         clockify_response = session.post(url, json = data)
         if(clockify_response.ok):
