@@ -42,7 +42,7 @@ from .signals import user_cancel_account as user_cancel_account_signal
 from .signals import user_change_email as user_change_email_signal
 from .throttling import UserDetailRateThrottle, UserUpdateRateThrottle
 
-from settings.common import TUXDI_CLOKIFY_WORKSPACE_ID
+from settings.config import TUXDI_CLOKIFY_WORKSPACE_ID
 import requests as rq
 import json
 import datetime
