@@ -13,6 +13,6 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='user',
             name='clockify_key',
-            field=models.CharField(blank=True, max_length=48),
+            field=models.CharField(blank=True, max_length=48, null=True, unique=True),
         ),
     ]
