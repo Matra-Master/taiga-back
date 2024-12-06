@@ -34,6 +34,12 @@ DATABASES = {
 
 TUXDI_CLOKIFY_WORKSPACE_ID = "5d9cd853c9fde903181d0f4a"
 
+clockify_url = "https://api.clockify.me/api/v1"
+
+start_timer_url = f"{clockify_url}/workspaces/{TUXDI_CLOKIFY_WORKSPACE_ID}/time-entries"
+user_url = f"{clockify_url}/user"
+user_workspace_url = f"{clockify_url}/workspaces/{TUXDI_CLOKIFY_WORKSPACE_ID}/user"
+
 DEFAULT_AUTO_FIELD = "django.db.models.AutoField"
 
 

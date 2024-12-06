@@ -42,7 +42,7 @@ from .signals import user_cancel_account as user_cancel_account_signal
 from .signals import user_change_email as user_change_email_signal
 from .throttling import UserDetailRateThrottle, UserUpdateRateThrottle
 
-from settings.config import TUXDI_CLOKIFY_WORKSPACE_ID
+from settings.common import user_url, start_timer_url, user_workspace_url
 import requests as rq
 import json
 import datetime
@@ -458,7 +458,6 @@ class UsersViewSet(ModelCrudViewSet):
 
     @list_route(methods=["POST"])
     def start_clockify_timer(self, request, pk=None):
-        url = f"https://api.clockify.me/api/v1/workspaces/{TUXDI_CLOKIFY_WORKSPACE_ID}/time-entries"
         data = {
             "customAttributes": [],
             "customFields": []
@@ -466,9 +465,13 @@ class UsersViewSet(ModelCrudViewSet):
         session = rq.Session()
         clockify_key = request.DATA.get('clockifyKey', None)
 
-        tg_id = request.DATA.get('ref', None)
+        tg_id = request.DATA.get('usRef', None)
         tg_subject = request.DATA.get('subject', None)
-        clockify_description = f"TG-{tg_id or ''} {tg_subject or ''}"
+        tg_task_id = request.DATA.get('taskRef', None)
+        task_description_id = ""
+        if(tg_task_id != ""):
+             task_description_id = f" - #{tg_task_id}"
+        clockify_description = f"TG-{tg_id or ''}{task_description_id} {tg_subject or ''}"
 
         project_id = request.DATA.get('projectClockifyId', None)
 
@@ -484,7 +487,7 @@ class UsersViewSet(ModelCrudViewSet):
         if(project_id is not None):
             data["projectId"] = project_id
 
-        clockify_response = session.post(url, json = data)
+        clockify_response = session.post(start_timer_url, json = data)
         if(clockify_response.ok):
             return response.Ok({"message": "Clockify time entry started"})
         else:
@@ -492,8 +495,6 @@ class UsersViewSet(ModelCrudViewSet):
 
     @list_route(methods=["POST"])
     def stop_clockify_timer(self, request, pk=None):
-        user_data_url = f"https://api.clockify.me/api/v1/user"
-        
         session = rq.Session()
         clockify_key = request.DATA.get('clockifyKey',None)
         if(clockify_key is None):
@@ -508,7 +509,7 @@ class UsersViewSet(ModelCrudViewSet):
             raise exc.WrongArguments(_("There is no user with that Clockify key"))
 
         if(user.clockify_id is None):
-            user_data_clocki_response = session.get(user_data_url)
+            user_data_clocki_response = session.get(user_url)
             if(not user_data_clocki_response.ok):
                 return response.BadRequest({"error_message": user_data_clocki_response.json().get('message',"")})
 
@@ -516,7 +517,7 @@ class UsersViewSet(ModelCrudViewSet):
             user.save()
         user_id = user.clockify_id
 
-        time_entries_url = f"https://api.clockify.me/api/v1/workspaces/{TUXDI_CLOKIFY_WORKSPACE_ID}/user/{user_id}/time-entries"
+        time_entries_url = f"{user_workspace_url}/{user_id}/time-entries"
 
         time_entires_response = session.get(time_entries_url)
         if (not time_entires_response.ok):
