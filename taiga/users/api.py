@@ -466,9 +466,13 @@ class UsersViewSet(ModelCrudViewSet):
         session = rq.Session()
         clockify_key = request.DATA.get('clockifyKey', None)
 
-        tg_id = request.DATA.get('ref', None)
+        tg_id = request.DATA.get('usRef', None)
         tg_subject = request.DATA.get('subject', None)
-        clockify_description = f"TG-{tg_id or ''} {tg_subject or ''}"
+        tg_task_id = request.DATA.get('taskRef', None)
+        task_description_id = ""
+        if(tg_task_id != ""):
+             task_description_id = f" - #{tg_task_id}"
+        clockify_description = f"TG-{tg_id or ''}{task_description_id} {tg_subject or ''}"
 
         project_id = request.DATA.get('projectClockifyId', None)
 
