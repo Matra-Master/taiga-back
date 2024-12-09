@@ -468,6 +468,11 @@ class UsersViewSet(ModelCrudViewSet):
         tg_id = request.DATA.get('usRef', None)
         tg_subject = request.DATA.get('subject', None)
         tg_task_id = request.DATA.get('taskRef', None)
+        tagIds = request.DATA.get('tagIds', [])
+
+        if(len(tagIds)):
+            data["tagIds"] = tagIds
+
         task_description_id = ""
         if(tg_task_id != ""):
              task_description_id = f" - #{tg_task_id}"
