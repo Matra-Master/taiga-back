@@ -1,0 +1,22 @@
+services:
+  standalone-taiga-db:
+    image: postgres:12.3
+    container_name: standalone_taiga_db
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: "taiga"
+      POSTGRES_USER: "taiga"
+      POSTGRES_PASSWORD: "taiga"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taiga"]
+      interval: 2s
+      timeout: 15s
+      retries: 5
+      start_period: 3s
+    volumes:
+      - taiga-db-data:/var/lib/postgresql/data
+
+
+volumes:
+  taiga-db-data:
