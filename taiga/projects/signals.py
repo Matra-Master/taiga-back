@@ -9,7 +9,7 @@ from django.apps import apps
 from django.conf import settings
 from django.db.models import F
 from django.dispatch import Signal
-
+from taiga.projects.tagging import services 
 from taiga.projects.notifications.services import create_notify_policy_if_not_exists
 
 
@@ -60,7 +60,7 @@ def project_post_save(sender, instance, created, **kwargs):
         template.tags_colors = instance.tags_colors
 
     template.apply_to_project(instance)
-
+    services.create_tag(instance,"REQUERIMIENTO DEL CLIENTE","#db162f")
     instance.save()
 
     Role = apps.get_model("users", "Role")
