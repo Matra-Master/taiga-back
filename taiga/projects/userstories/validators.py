@@ -16,7 +16,8 @@ from taiga.base.fields import PickledObjectField
 from taiga.base.utils import json
 from taiga.projects.milestones.models import Milestone
 from taiga.projects.mixins.validators import AssignedToValidator
-from taiga.projects.models import UserStoryStatus, Swimlane
+from taiga.projects.models import UserStoryStatus, Swimlane, Project
+from taiga.projects.custom_attributes.models import UserStoryCustomAttribute, UserStoryCustomAttributesValues
 from taiga.projects.notifications.mixins import EditableWatchedResourceSerializer
 from taiga.projects.notifications.validators import WatchersValidator
 from taiga.projects.tagging.fields import TagsAndTagsColorsField
@@ -243,15 +244,39 @@ class UpdateUserStoriesKanbanOrderBulkValidator(ProjectExistsValidator, validato
         return attrs
 
     def validate_bulk_userstories(self, attrs, source):
+        project_id = attrs["project_id"]
         filters = {
-            "project__id": attrs["project_id"],
+            "project__id": project_id,
             "id__in": attrs[source]
         }
 
-        if models.UserStory.objects.filter(**filters).count() != len(filters["id__in"]):
+        user_stories = models.UserStory.objects.filter(**filters)
+        if user_stories.count() != len(filters["id__in"]):
             raise ValidationError(_("Invalid user story ids. All stories must belong to the same project."))
 
+        is_valid = self._is_valid_status_change(project_id, attrs["status_id"] , user_stories)
+        if not is_valid:
+            raise ValidationError(_("To close a customer requirement must provide some evidence"))
         return attrs
+
+
+    def _is_valid_status_change(self, project_id, status_id, user_stories):
+        closed_statuses = list(map(lambda status: status.id ,UserStoryStatus.objects.filter(project=project_id, is_closed=True)))
+        if status_id not in closed_statuses:
+            return True
+
+        customer_req_stories = list(filter(lambda storie: "requerimiento del cliente" in storie.tags, user_stories))
+        if len(customer_req_stories) == 0:
+            return True
+
+        for user_story in customer_req_stories:
+            link_evidence = UserStoryCustomAttributesValues.objects.get(user_story=user_story.id)
+            link_atribute_id = UserStoryCustomAttribute.objects.get(project=project_id, name="Evidencia (enlace)").id
+
+            evidence = link_evidence.attributes_values.get(str(link_atribute_id))
+            if evidence is None or len(evidence) == 0:
+                return False
+        return True
 
 
 # Milestone bulk validators
