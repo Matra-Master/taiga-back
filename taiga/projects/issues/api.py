@@ -22,6 +22,7 @@ from taiga.projects.milestones.models import Milestone
 from taiga.projects.mixins.by_ref import ByRefMixin
 from taiga.projects.mixins.promote import PromoteToUserStoryMixin
 from taiga.projects.models import Project, IssueStatus, Severity, Priority, IssueType
+from taiga.projects.custom_attributes.models import IssueCustomAttribute, IssueCustomAttributesValues
 from taiga.projects.notifications.mixins import AssignedToSignalMixin
 from taiga.projects.notifications.mixins import WatchedResourceMixin
 from taiga.projects.notifications.mixins import WatchersViewSetMixin
@@ -89,6 +90,11 @@ class IssueViewSet(AssignedToSignalMixin, OCCResourceMixin, VotedResourceMixin,
     def update(self, request, *args, **kwargs):
         self.object = self.get_object_or_none()
         project_id = request.DATA.get('project', None)
+
+        new_status = request.DATA.get('status', None)
+        if not self._is_valid_new_status(new_status):
+            return response.BadRequest({"error": "To close a customer requirement must provide some evidence"})
+
         if project_id and self.object and self.object.project.id != project_id:
             try:
                 new_project = Project.objects.get(pk=project_id)
@@ -261,6 +267,22 @@ class IssueViewSet(AssignedToSignalMixin, OCCResourceMixin, VotedResourceMixin,
         ret = services.update_issues_milestone_in_bulk(data["bulk_issues"], milestone)
 
         return response.Ok(ret)
+
+
+    def _is_valid_new_status(self, new_status):
+        if ("requerimiento del cliente" not in self.object.tags or new_status is None):
+            return True
+
+        project_id = self.object.project_id
+        closed_status = IssueStatus.objects.filter(project=project_id).get(name="Closed")
+        if not closed_status.id == new_status:
+            return True
+
+        link_evidence = IssueCustomAttributesValues.objects.get(issue=self.object.id)
+        link_atribute_id = IssueCustomAttribute.objects.filter(project=project_id).get(name="Evidencia (enlace)").id
+
+        evidence_field = link_evidence.attributes_values.get(str(link_atribute_id))
+        return evidence_field is not None and len(evidence_field)>0
 
 
 class IssueVotersViewSet(VotersViewSetMixin, ModelListViewSet):

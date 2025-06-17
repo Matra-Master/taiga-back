@@ -18,6 +18,9 @@ from taiga.base.api.utils import get_object_or_error
 from taiga.base.fields import WatchersField, MethodField
 from taiga.projects.notifications import services
 
+from taiga.projects.models import Project, UserStoryStatus
+from taiga.projects.custom_attributes.models import UserStoryCustomAttribute, UserStoryCustomAttributesValues
+
 from . apps import signal_assigned_to
 from . apps import signal_assigned_users
 from . apps import signal_comment
@@ -389,6 +392,10 @@ class AssignedToSignalMixin:
 
 class AssignedUsersSignalMixin:
     def update(self, request, *args, **kwargs):
+        new_status = request.DATA.get('status', None)
+        if not self._is_valid_new_status(new_status):
+            return response.BadRequest({"error": "To close a customer requirement must provide some evidence"})
+
         if not request.DATA.get('assigned_users'):
             return super().update(request, *args, **kwargs)
 
@@ -414,3 +421,19 @@ class AssignedUsersSignalMixin:
                                        obj=obj,
                                        new_assigned_users=new_assigned_users)
         return result
+
+
+    def _is_valid_new_status(self, new_status):
+        if ("requerimiento del cliente" not in self.object.tags or new_status is None):
+            return True
+
+        project_id = self.object.project_id
+        closed_status = UserStoryStatus.objects.filter(project=project_id).get(name="Done")
+        if not closed_status.id == new_status:
+            return True
+
+        link_evidence = UserStoryCustomAttributesValues.objects.get(user_story=self.object.id)
+        link_atribute_id = UserStoryCustomAttribute.objects.filter(project=project_id).get(name="Evidencia (enlace)").id        
+        evidence = link_evidence.attributes_values.get(str(link_atribute_id))
+        return evidence is not None and len(evidence)>0
+
