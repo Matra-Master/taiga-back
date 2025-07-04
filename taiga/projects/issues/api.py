@@ -94,7 +94,7 @@ class IssueViewSet(AssignedToSignalMixin, OCCResourceMixin, VotedResourceMixin,
 
         new_status = request.DATA.get('status', None)
         if not self._is_valid_new_status(new_status):
-            return response.BadRequest({"error": "To close a customer requirement must provide some evidence"})
+            return response.BadRequest({"error": "To close this issue must provide some evidence"})
 
         if project_id and self.object and self.object.project.id != project_id:
             try:
