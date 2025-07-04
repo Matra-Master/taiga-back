@@ -8,6 +8,7 @@
 #
 from django.utils.translation import gettext as _
 from django.http import HttpResponse
+from django.db.models import Q
 
 from taiga.base import filters
 from taiga.base import exceptions as exc
@@ -270,9 +271,16 @@ class IssueViewSet(AssignedToSignalMixin, OCCResourceMixin, VotedResourceMixin,
 
 
     def _is_valid_new_status(self, new_status):
-        if ("requerimiento del cliente" not in self.object.tags or new_status is None):
+        if new_status is None:
             return True
 
+        if "requerimiento del cliente" in self.object.tags or self._is_bug_type_issue():
+            return self._is_valid_status_as_user_requirement(new_status)
+
+        return True
+
+
+    def _is_valid_status_as_user_requirement(self, new_status):
         project_id = self.object.project_id
         closed_status = IssueStatus.objects.filter(project=project_id).get(name="Closed")
         if not closed_status.id == new_status:
@@ -283,6 +291,16 @@ class IssueViewSet(AssignedToSignalMixin, OCCResourceMixin, VotedResourceMixin,
 
         evidence_field = link_evidence.attributes_values.get(str(link_atribute_id))
         return evidence_field is not None and len(evidence_field)>0
+
+
+    def _is_bug_type_issue(self):
+        project_id = self.object.project_id
+        types_qs = IssueType.objects.filter(Q(project=project_id, name="BF-Visual") | Q(project=project_id, name="BF-Prod") | Q(project=project_id, name="BF-QA"))
+        issue_id_list = list(map(lambda type: type.id, types_qs))
+
+        if self.object.type_id in issue_id_list:
+            return True
+        return False
 
 
 class IssueVotersViewSet(VotersViewSetMixin, ModelListViewSet):
