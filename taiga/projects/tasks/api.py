@@ -337,8 +337,9 @@ class TaskViewSet(AssignedToSignalMixin, OCCResourceMixin, VotedResourceMixin,
             return True
 
         project_id = self.object.project_id
-        closed_status = TaskStatus.objects.filter(project=project_id).get(name="Closed")
-        if not closed_status.id == new_status:
+        closed_statuses_qs = TaskStatus.objects.filter(project=project_id, is_closed=True)
+        closed_statuses = list(map(lambda status: status.id, closed_statuses_qs))
+        if new_status not in closed_statuses:
             return True
 
         link_evidence = TaskCustomAttributesValues.objects.get(task=self.object.id)
