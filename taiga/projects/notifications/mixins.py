@@ -428,8 +428,9 @@ class AssignedUsersSignalMixin:
             return True
 
         project_id = self.object.project_id
-        closed_status = UserStoryStatus.objects.filter(project=project_id).get(name="Done")
-        if not closed_status.id == new_status:
+        closed_statuses_qs = UserStoryStatus.objects.filter(project=project_id, is_closed=True)
+        closed_statuses = list(map(lambda status: status.id, closed_statuses_qs))
+        if new_status not in closed_statuses:
             return True
 
         link_evidence = UserStoryCustomAttributesValues.objects.get(user_story=self.object.id)

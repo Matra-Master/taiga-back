@@ -282,8 +282,9 @@ class IssueViewSet(AssignedToSignalMixin, OCCResourceMixin, VotedResourceMixin,
 
     def _is_valid_status_as_user_requirement(self, new_status):
         project_id = self.object.project_id
-        closed_status = IssueStatus.objects.filter(project=project_id).get(name="Closed")
-        if not closed_status.id == new_status:
+        closed_statuses_qs = IssueStatus.objects.filter(project=project_id, is_closed=True)
+        closed_statuses = list(map(lambda status: status.id, closed_statuses_qs))
+        if new_status not in closed_statuses:
             return True
 
         link_evidence = IssueCustomAttributesValues.objects.get(issue=self.object.id)
