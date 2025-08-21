@@ -458,6 +458,9 @@ class UsersViewSet(ModelCrudViewSet):
 
     @list_route(methods=["POST"])
     def start_clockify_timer(self, request, pk=None):
+        from taiga.projects.models import Project
+        from taiga.projects.epics.models import Epic
+        
         data = {
             "customAttributes": [],
             "customFields": []
@@ -468,9 +471,20 @@ class UsersViewSet(ModelCrudViewSet):
         tg_subject = request.DATA.get('subject', None)
         tg_task_id = request.DATA.get('taskRef', None)
         tagIds = request.DATA.get('tagIds', [])
+        
+        project_id = request.DATA.get('projectId', None)
+        epic_id = request.DATA.get('epicId', None)
 
         if(uuid is None):
             return response.BadRequest({"error_message": "uuid must be sended"})
+        
+        if(project_id is None):
+            return response.BadRequest({"error_message": "projectId must be provided"})
+
+        try:
+            project = Project.objects.get(id=project_id)
+        except Project.DoesNotExist:
+            return response.BadRequest({"error_message": "Project not found"})
 
         if(len(tagIds)):
             data["tagIds"] = tagIds
@@ -480,7 +494,25 @@ class UsersViewSet(ModelCrudViewSet):
              task_description_id = f" - #{tg_task_id}"
         clockify_description = f"TG-{tg_id or ''}{task_description_id} {tg_subject or ''}"
 
-        project_id = request.DATA.get('projectClockifyId', None)
+        clockify_project_id = None
+        
+        if project.tracking_mode == 'project':
+            clockify_project_id = project.clockify_id
+        elif project.tracking_mode == 'epic':
+            if epic_id is None:
+                return response.BadRequest({"error_message": "epicId is required when project tracking mode is 'epic'"})
+            
+            try:
+                epic = Epic.objects.get(id=epic_id)
+                clockify_project_id = epic.clockify_project_id
+            except Epic.DoesNotExist:
+                return response.BadRequest({"error_message": "Epic not found"})
+            
+            if not clockify_project_id:
+                return response.BadRequest({"error_message": "Epic does not have a clockify_project_id configured"})
+
+        if not clockify_project_id:
+            return response.BadRequest({"error_message": "No clockify project ID available for tracking"})
 
         clockify_key = self.model.objects.get(uuid=uuid).clockify_key
         if (clockify_key is None):
@@ -490,13 +522,15 @@ class UsersViewSet(ModelCrudViewSet):
 
         data["description"] = clockify_description
         data["billable"] = False
-
-        if(project_id is not None):
-            data["projectId"] = project_id
+        data["projectId"] = clockify_project_id
 
         clockify_response = session.post(start_timer_url, json = data)
         if(clockify_response.ok):
-            return response.Ok({"message": "Clockify time entry started"})
+            return response.Ok({
+                "message": "Clockify time entry started",
+                "tracking_mode": project.tracking_mode,
+                "clockify_project_id": clockify_project_id
+            })
         else:
             return response.BadRequest({"error_message": clockify_response.json().get('message',"")})
 

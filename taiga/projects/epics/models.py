@@ -77,6 +77,9 @@ class Epic(OCCModelMixin, WatchedModelMixin, BlockedMixin, TaggedMixin, models.M
     external_reference = ArrayField(models.TextField(null=False, blank=False),
                                     null=True, blank=True, default=None, verbose_name=_("external reference"))
 
+    clockify_project_id = models.CharField(max_length=36, null=True, blank=True,
+                                          verbose_name=_("clockify project id"))
+
     attachments = GenericRelation("attachments.Attachment")
 
     _importing = None
