@@ -463,12 +463,14 @@ class UsersViewSet(ModelCrudViewSet):
             "customFields": []
         }
         session = rq.Session()
-        clockify_key = request.DATA.get('clockifyKey', None)
-
+        uuid = request.DATA.get('uuid', None)
         tg_id = request.DATA.get('usRef', None)
         tg_subject = request.DATA.get('subject', None)
         tg_task_id = request.DATA.get('taskRef', None)
         tagIds = request.DATA.get('tagIds', [])
+
+        if(uuid is None):
+            return response.BadRequest({"error_message": "uuid must be sended"})
 
         if(len(tagIds)):
             data["tagIds"] = tagIds
@@ -480,9 +482,7 @@ class UsersViewSet(ModelCrudViewSet):
 
         project_id = request.DATA.get('projectClockifyId', None)
 
-        if(clockify_key is None):
-            return response.BadRequest({"error_message": "clockifyKey must be sended"})
-
+        clockify_key = self.model.objects.get(uuid=uuid).clockify_key
         session.headers["X-Api-Key"] = clockify_key
         session.headers["Content-Type"] = "application/json"
 
@@ -501,17 +501,19 @@ class UsersViewSet(ModelCrudViewSet):
     @list_route(methods=["POST"])
     def stop_clockify_timer(self, request, pk=None):
         session = rq.Session()
-        clockify_key = request.DATA.get('clockifyKey',None)
-        if(clockify_key is None):
-            return response.BadRequest({"error_message": "Clockify must be sended"})
+        uuid = request.DATA.get('uuid',None)
 
-        session.headers["X-Api-Key"] = clockify_key
-        session.headers["Content-Type"] = "application/json"
+        if(uuid is None):
+            return response.BadRequest({"error_message": "UUID must be sended"})
 
         try:
-            user = self.model.objects.get(clockify_key=clockify_key)
+           user = self.model.objects.get(uuid=uuid)
         except models.User.DoesNotExist:
-            raise exc.WrongArguments(_("There is no user with that Clockify key"))
+            raise exc.WrongArguments(_("There is no user with that UUID"))
+
+        session.headers["X-Api-Key"] = user.clockify_key
+        session.headers["Content-Type"] = "application/json"
+        
 
         if(user.clockify_id is None):
             user_data_clocki_response = session.get(user_url)
