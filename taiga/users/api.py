@@ -483,6 +483,8 @@ class UsersViewSet(ModelCrudViewSet):
         project_id = request.DATA.get('projectClockifyId', None)
 
         clockify_key = self.model.objects.get(uuid=uuid).clockify_key
+        if (clockify_key is None):
+            return response.BadRequest({"error_message": "Clockify key must be set on profile config"})
         session.headers["X-Api-Key"] = clockify_key
         session.headers["Content-Type"] = "application/json"
 
@@ -510,8 +512,10 @@ class UsersViewSet(ModelCrudViewSet):
            user = self.model.objects.get(uuid=uuid)
         except models.User.DoesNotExist:
             raise exc.WrongArguments(_("There is no user with that UUID"))
-
-        session.headers["X-Api-Key"] = user.clockify_key
+        clockify_key = user.clockify_key
+        if (clockify_key is None):
+            return response.BadRequest({"error_message": "Clockify key must be set on profile config"})
+        session.headers["X-Api-Key"] = clockify_key
         session.headers["Content-Type"] = "application/json"
         
 
