@@ -282,6 +282,17 @@ class Project(ProjectDefaults, TaggedMixin, TagsColorsMixin, models.Model):
                                                            verbose_name=_("activity last year"),
                                                            db_index=True)
     clockify_id = models.CharField(max_length=36, editable=True, null=True)
+    
+    TRACKING_MODE_CHOICES = [
+        ('project', _('Track by Project')),
+        ('epic', _('Track by Epic')),
+    ]
+    tracking_mode = models.CharField(
+        max_length=10, 
+        choices=TRACKING_MODE_CHOICES, 
+        default='project',
+        verbose_name=_("tracking mode")
+    )
 
     _importing = None
 
