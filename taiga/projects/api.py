@@ -89,6 +89,57 @@ class ProjectViewSet(LikedResourceMixin, HistoryResourceMixin,
                        "total_activity_last_month",
                        "total_activity_last_year")
 
+    PROJECT_TYPES = {
+        'Proyecto-UX': 'Proyecto-UX',
+        'Proyecto-Comun': 'Proyecto-Comun',
+    }    
+
+    def create(self, request, *args, **kwargs):
+        project_type = request.DATA.get('project_type', None)
+
+        if project_type == self.PROJECT_TYPES['Proyecto-UX']:
+            return self._create_epic_for_ux_project(request, *args, **kwargs)
+        
+        return super().create(request, *args, **kwargs)
+
+    def _create_epic_for_ux_project(self, request, *args, **kwargs):
+        from django.test import RequestFactory
+        from taiga.projects.epics.api import EpicViewSet
+        try:
+            target_project = models.Project.objects.get(id=11)
+        except models.Project.DoesNotExist:
+            return response.BadRequest(_("Target project with ID 11 does not exist"))
+        epic_data = {
+            'clockify_project_id': request.DATA.get('clockify_id', None),
+            'color': request.DATA.get('color', '#CFD350'),
+            'description': request.DATA.get('description', ''),
+            'project': 11,
+            'subject': request.DATA.get('name', 'Nombre por defecto'),
+        }
+        
+        factory = RequestFactory()
+        epic_request = factory.post('/api/v1/epics', data=epic_data)
+        
+        epic_request.user = request.user
+        epic_request.auth = getattr(request, 'auth', None)
+        epic_request.META = request.META.copy()
+        epic_request.DATA = epic_data
+        epic_request.QUERY_PARAMS = {}
+        epic_request._files = {}
+
+        epic_viewset = EpicViewSet()
+        epic_viewset.request = epic_request
+        epic_viewset.format_kwarg = None
+        epic_viewset.action = 'create'
+
+        epic_viewset.kwargs = {}
+        epic_viewset.pk_url_kwarg = 'pk'
+        epic_viewset.slug_url_kwarg = 'slug'
+        epic_viewset.lookup_field = 'pk'
+        epic_viewset.slug_field = 'slug'
+        
+        return epic_viewset.create(epic_request)
+
     def is_blocked(self, obj):
         return obj.blocked_code is not None
 
