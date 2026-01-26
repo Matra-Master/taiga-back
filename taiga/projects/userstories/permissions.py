@@ -26,6 +26,7 @@ class UserStoryPermission(TaigaResourcePermission):
     bulk_create_perms = IsAuthenticated() & (HasProjectPerm('add_us_to_project') | HasProjectPerm('add_us'))
     bulk_update_order_perms = HasProjectPerm('modify_us')
     bulk_update_milestone_perms = HasProjectPerm('modify_us')
+    clone_perms = HasProjectPerm('add_us_to_project') | HasProjectPerm('add_us')
     upvote_perms = IsAuthenticated() & HasProjectPerm('view_us')
     downvote_perms = IsAuthenticated() & HasProjectPerm('view_us')
     watch_perms = IsAuthenticated() & HasProjectPerm('view_us')

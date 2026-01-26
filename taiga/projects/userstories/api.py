@@ -11,12 +11,13 @@ from django.db.models import Max
 
 from django.utils.translation import gettext as _
 from django.http import HttpResponse
+from django.utils import timezone
 
 from taiga.base import filters as base_filters
 from taiga.base import exceptions as exc
 from taiga.base import response
 from taiga.base import status
-from taiga.base.decorators import list_route
+from taiga.base.decorators import detail_route, list_route
 from taiga.base.api.mixins import BlockedByProjectMixin
 from taiga.base.api import ModelCrudViewSet
 from taiga.base.api import ModelListViewSet
@@ -306,6 +307,115 @@ class UserStoryViewSet(AssignedUsersSignalMixin, OCCResourceMixin,
                     self.send_notifications(generator, history)
 
         return response
+
+    @transaction.atomic
+    @detail_route(methods=["POST"])
+    def clone(self, request, pk=None):
+        """
+        Clone a user story and all its associated tasks.
+        """
+        # Get the original user story
+        original_us = self.get_object()
+        
+        # Check permissions to create a new US in the same project
+        self.check_permissions(request, "create", original_us.project)
+        
+        # Check if project is blocked
+        if original_us.project.blocked_code is not None:
+            raise exc.Blocked(_("Blocked element"))
+        
+        # Get the Task model
+        Task = apps.get_model("tasks", "Task")
+        RolePoints = apps.get_model("userstories", "RolePoints")
+        RelatedUserStory = apps.get_model("epics", "RelatedUserStory")
+        
+        # Get original tasks before cloning US
+        original_tasks = list(Task.objects.filter(user_story=original_us))
+        
+        # Get original role points
+        original_role_points = list(original_us.role_points.all())
+
+        # Get original epic links
+        original_related_userstories = list(RelatedUserStory.objects.filter(user_story=original_us))
+        
+        # Get original assigned users
+        original_assigned_users = list(original_us.assigned_users.all())
+        
+        # Clone the user story
+        cloned_us = models.UserStory(
+            project=original_us.project,
+            milestone=original_us.milestone,
+            status=original_us.status,
+            swimlane=original_us.swimlane,
+            owner=request.user,
+            subject=original_us.subject,
+            description=original_us.description,
+            assigned_to=original_us.assigned_to,
+            client_requirement=original_us.client_requirement,
+            team_requirement=original_us.team_requirement,
+            tags=original_us.tags.copy() if original_us.tags else [],
+            is_blocked=original_us.is_blocked,
+            blocked_note=original_us.blocked_note,
+            due_date=original_us.due_date,
+            due_date_reason=original_us.due_date_reason,
+            backlog_order=models.UserStory.NEW_BACKLOG_ORDER(),
+            sprint_order=models.UserStory.NEW_SPRINT_ORDER(),
+            kanban_order=models.UserStory.NEW_KANBAN_ORDER(),
+            created_date=timezone.now(),
+        )
+        cloned_us.save()
+        
+        # Clone role points
+        for rp in original_role_points:
+            RolePoints.objects.get_or_create(
+                user_story=cloned_us,
+                role=rp.role,
+                defaults={"points": rp.points}
+            )
+        
+        # Clone assigned users
+        if original_assigned_users:
+            cloned_us.assigned_users.set(original_assigned_users)
+        
+        # Clone tasks
+        for original_task in original_tasks:
+            cloned_task = Task(
+                user_story=cloned_us,
+                project=original_task.project,
+                milestone=original_task.milestone,
+                owner=request.user,
+                status=original_task.status,
+                subject=original_task.subject,
+                description=original_task.description,
+                assigned_to=original_task.assigned_to,
+                tags=original_task.tags.copy() if original_task.tags else [],
+                is_blocked=original_task.is_blocked,
+                blocked_note=original_task.blocked_note,
+                due_date=original_task.due_date,
+                due_date_reason=original_task.due_date_reason,
+                is_iocaine=original_task.is_iocaine,
+                created_date=timezone.now(),
+            )
+            cloned_task.save()
+
+        # Clone epic links
+        for related_us in original_related_userstories:
+            RelatedUserStory.objects.get_or_create(
+                user_story=cloned_us,
+                epic=related_us.epic,
+                defaults={"order": related_us.order}
+            )
+        
+        # Persist history snapshot for the cloned US
+        self.persist_history_snapshot(obj=cloned_us)
+
+        # Reload with extra info (role_points_attr, totals, etc.) for serialization
+        cloned_us = self.get_queryset().get(pk=cloned_us.pk)
+
+        # Serialize and return the cloned user story
+        serializer = self.get_serializer_class()(cloned_us)
+        return response.Created(serializer.data)
+
 
     def update(self, request, *args, **kwargs):
         self.object = self.get_object_or_none()
