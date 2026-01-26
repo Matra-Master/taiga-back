@@ -13,8 +13,8 @@ echo Executing pending migrations
 python manage.py migrate
 
 # Load default templates
-echo Load default templates
-python manage.py loaddata initial_project_templates
+# echo Load default templates
+# python manage.py loaddata initial_project_templates
 
 # Give permission to taiga:taiga after mounting volumes
 echo Give permission to taiga:taiga
