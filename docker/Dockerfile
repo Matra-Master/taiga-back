@@ -37,6 +37,7 @@ RUN set -eux; \
      libpq5 \
      libpq-dev \
      git \
+     gnupg2 \
      net-tools \
      procps \
      wget; \
