@@ -22,6 +22,64 @@ from taiga.projects.notifications.mixins import WatchedModelMixin
 from taiga.projects.mixins.blocked import BlockedMixin
 
 
+class PullRequest(models.Model):
+    project = models.ForeignKey(
+        "projects.Project",
+        null=False, blank=False,
+        related_name="pull_requests",
+        verbose_name=_("project"),
+        on_delete=models.CASCADE,
+    )
+    ref = models.BigIntegerField(
+        null=False, blank=False,
+        db_index=True,
+        verbose_name=_("ref"),
+    )
+    pull_request_url = models.URLField(
+        null=False, blank=False,
+        unique=True,
+        verbose_name=_("pull request URL"),
+    )
+    branch_name = models.TextField(
+        null=False, blank=False,
+        verbose_name=_("branch name"),
+    )
+    pull_request_id = models.BigIntegerField(
+        null=True, blank=True,
+        verbose_name=_("pull request ID"),
+    )
+    repository = models.TextField(
+        null=True, blank=True,
+        verbose_name=_("repository"),
+    )
+    merged_by = models.TextField(
+        null=True, blank=True,
+        verbose_name=_("merged by"),
+    )
+    merged_at = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name=_("merged at"),
+    )
+    created_at = models.DateTimeField(
+        null=False, blank=False,
+        verbose_name=_("created at"),
+        default=timezone.now,
+    )
+    updated_at = models.DateTimeField(
+        null=False, blank=False,
+        verbose_name=_("updated at"),
+        auto_now=True,
+    )
+
+    class Meta:
+        verbose_name = "pull request"
+        verbose_name_plural = "pull requests"
+        ordering = ["project", "ref", "-merged_at"]
+
+    def __str__(self):
+        return f"[{self.repository}] {self.branch_name} -> {self.pull_request_url}"
+
+
 class RolePoints(models.Model):
     user_story = models.ForeignKey(
         "UserStory",

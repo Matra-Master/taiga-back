@@ -20,7 +20,7 @@ from taiga.projects import choices as project_choices
 from taiga.projects.epics.models import Epic
 from taiga.projects.issues.models import Issue
 from taiga.projects.tasks.models import Task
-from taiga.projects.userstories.models import UserStory
+from taiga.projects.userstories.models import UserStory, PullRequest
 from taiga.projects.models import Membership
 from taiga.projects.history.services import get_history_queryset_by_model_instance, take_snapshot
 from taiga.projects.notifications.choices import NotifyLevel
@@ -663,6 +663,453 @@ def test_api_patch_project_modules(client):
     assert "github" in config
     assert config["github"]["secret"] == "test_secret"
     assert config["github"]["webhooks_url"] != "test_url"
+
+
+def test_pull_request_event_merged_with_tg_branch(client):
+    user_story = f.UserStoryFactory.create()
+    user_story.project.default_us_status = user_story.status
+    user_story.project.save()
+    f.ProjectModulesConfigFactory(project=user_story.project, config={
+        "github": {
+            "secret": "tpnIwJDz4e"
+        }
+    })
+
+    payload = {
+        "action": "closed",
+        "pull_request": {
+            "html_url": "https://github.com/owner/repo/pull/123",
+            "id": 12345,
+            "head": {
+                "ref": "TG-{}-mi-rama".format(user_story.ref),
+            },
+            "merged": True,
+            "merged_by": {
+                "login": "testuser",
+            },
+            "merged_at": "2026-07-21T14:39:26Z",
+        },
+        "repository": {
+            "full_name": "owner/repo",
+        },
+    }
+
+    ev_hook = event_hooks.PullRequestEventHook(user_story.project, payload)
+    ev_hook.process_event()
+
+    assert PullRequest.objects.filter(project=user_story.project, ref=user_story.ref).count() == 1
+    pr = PullRequest.objects.filter(project=user_story.project, ref=user_story.ref).first()
+    assert pr.pull_request_url == "https://github.com/owner/repo/pull/123"
+    assert pr.branch_name == "TG-{}-mi-rama".format(user_story.ref)
+    assert pr.pull_request_id == 12345
+    assert pr.repository == "owner/repo"
+
+
+def test_pull_request_event_duplicate_url(client):
+    user_story = f.UserStoryFactory.create()
+    user_story.project.default_us_status = user_story.status
+    user_story.project.save()
+    f.ProjectModulesConfigFactory(project=user_story.project, config={
+        "github": {}
+    })
+
+    f.PullRequestFactory(
+        project=user_story.project,
+        ref=user_story.ref,
+        pull_request_url="https://github.com/owner/repo/pull/123",
+        branch_name="TG-{}-mi-rama".format(user_story.ref),
+    )
+
+    payload = {
+        "action": "closed",
+        "pull_request": {
+            "html_url": "https://github.com/owner/repo/pull/123",
+            "id": 12345,
+            "head": {
+                "ref": "TG-{}-mi-rama".format(user_story.ref),
+            },
+            "merged": True,
+            "merged_by": {
+                "login": "testuser",
+            },
+            "merged_at": "2026-07-21T14:39:26Z",
+        },
+        "repository": {
+            "full_name": "owner/repo",
+        },
+    }
+
+    ev_hook = event_hooks.PullRequestEventHook(user_story.project, payload)
+    ev_hook.process_event()
+
+    assert PullRequest.objects.filter(project=user_story.project, ref=user_story.ref).count() == 1
+
+
+def test_pull_request_event_tg_not_found(client):
+    user_story = f.UserStoryFactory.create()
+    user_story.project.default_us_status = user_story.status
+    user_story.project.save()
+    f.ProjectModulesConfigFactory(project=user_story.project, config={
+        "github": {}
+    })
+
+    payload = {
+        "action": "closed",
+        "pull_request": {
+            "html_url": "https://github.com/owner/repo/pull/999",
+            "id": 99999,
+            "head": {
+                "ref": "TG-999999-mi-rama",
+            },
+            "merged": True,
+            "merged_by": {
+                "login": "testuser",
+            },
+            "merged_at": "2026-07-21T14:39:26Z",
+        },
+        "repository": {
+            "full_name": "owner/repo",
+        },
+    }
+
+    ev_hook = event_hooks.PullRequestEventHook(user_story.project, payload)
+    ev_hook.process_event()
+
+    assert PullRequest.objects.filter(project=user_story.project, ref=user_story.ref).count() == 0
+
+
+def test_pull_request_event_opened_with_tg_branch(client):
+    user_story = f.UserStoryFactory.create()
+    user_story.project.default_us_status = user_story.status
+    user_story.project.save()
+    f.ProjectModulesConfigFactory(project=user_story.project, config={
+        "github": {
+            "secret": "tpnIwJDz4e"
+        }
+    })
+
+    payload = {
+        "action": "opened",
+        "pull_request": {
+            "html_url": "https://github.com/owner/repo/pull/123",
+            "id": 12345,
+            "head": {
+                "ref": "TG-{}-mi-rama".format(user_story.ref),
+            },
+            "merged": False,
+            "merged_by": None,
+            "merged_at": None,
+        },
+        "repository": {
+            "full_name": "owner/repo",
+        },
+    }
+
+    ev_hook = event_hooks.PullRequestEventHook(user_story.project, payload)
+    ev_hook.process_event()
+
+    assert PullRequest.objects.filter(project=user_story.project, ref=user_story.ref).count() == 1
+    pr = PullRequest.objects.filter(project=user_story.project, ref=user_story.ref).first()
+    assert pr.pull_request_url == "https://github.com/owner/repo/pull/123"
+    assert pr.branch_name == "TG-{}-mi-rama".format(user_story.ref)
+    assert pr.pull_request_id == 12345
+    assert pr.repository == "owner/repo"
+    assert pr.merged_at is None
+    assert pr.merged_by is None
+
+
+def test_pull_request_event_opened_duplicate_url(client):
+    user_story = f.UserStoryFactory.create()
+    user_story.project.default_us_status = user_story.status
+    user_story.project.save()
+    f.ProjectModulesConfigFactory(project=user_story.project, config={
+        "github": {}
+    })
+
+    f.PullRequestFactory(
+        project=user_story.project,
+        ref=user_story.ref,
+        pull_request_url="https://github.com/owner/repo/pull/123",
+        branch_name="TG-{}-mi-rama".format(user_story.ref),
+    )
+
+    payload = {
+        "action": "opened",
+        "pull_request": {
+            "html_url": "https://github.com/owner/repo/pull/123",
+            "id": 12345,
+            "head": {
+                "ref": "TG-{}-mi-rama".format(user_story.ref),
+            },
+            "merged": False,
+            "merged_by": None,
+            "merged_at": None,
+        },
+        "repository": {
+            "full_name": "owner/repo",
+        },
+    }
+
+    ev_hook = event_hooks.PullRequestEventHook(user_story.project, payload)
+    ev_hook.process_event()
+
+    assert PullRequest.objects.filter(project=user_story.project, ref=user_story.ref).count() == 1
+
+
+def test_pull_request_event_opened_tg_not_found(client):
+    user_story = f.UserStoryFactory.create()
+    user_story.project.default_us_status = user_story.status
+    user_story.project.save()
+    f.ProjectModulesConfigFactory(project=user_story.project, config={
+        "github": {}
+    })
+
+    payload = {
+        "action": "opened",
+        "pull_request": {
+            "html_url": "https://github.com/owner/repo/pull/999",
+            "id": 99999,
+            "head": {
+                "ref": "TG-999999-mi-rama",
+            },
+            "merged": False,
+            "merged_by": None,
+            "merged_at": None,
+        },
+        "repository": {
+            "full_name": "owner/repo",
+        },
+    }
+
+    ev_hook = event_hooks.PullRequestEventHook(user_story.project, payload)
+    ev_hook.process_event()
+
+    assert PullRequest.objects.filter(project=user_story.project, ref=user_story.ref).count() == 0
+
+
+def test_pull_request_event_opened_no_tg_branch(client):
+    user_story = f.UserStoryFactory.create()
+    f.ProjectModulesConfigFactory(project=user_story.project, config={
+        "github": {}
+    })
+
+    payload = {
+        "action": "opened",
+        "pull_request": {
+            "html_url": "https://github.com/owner/repo/pull/123",
+            "id": 12345,
+            "head": {
+                "ref": "feature/my-feature",
+            },
+            "merged": False,
+            "merged_by": None,
+            "merged_at": None,
+        },
+        "repository": {
+            "full_name": "owner/repo",
+        },
+    }
+
+    ev_hook = event_hooks.PullRequestEventHook(user_story.project, payload)
+    ev_hook.process_event()
+
+    assert PullRequest.objects.filter(project=user_story.project, ref=user_story.ref).count() == 0
+
+
+def test_pull_request_event_opened_then_merged_updates_record(client):
+    user_story = f.UserStoryFactory.create()
+    user_story.project.default_us_status = user_story.status
+    user_story.project.save()
+    f.ProjectModulesConfigFactory(project=user_story.project, config={
+        "github": {}
+    })
+
+    opened_payload = {
+        "action": "opened",
+        "pull_request": {
+            "html_url": "https://github.com/owner/repo/pull/123",
+            "id": 12345,
+            "head": {
+                "ref": "TG-{}-mi-rama".format(user_story.ref),
+            },
+            "merged": False,
+            "merged_by": None,
+            "merged_at": None,
+        },
+        "repository": {
+            "full_name": "owner/repo",
+        },
+    }
+
+    ev_hook = event_hooks.PullRequestEventHook(user_story.project, opened_payload)
+    ev_hook.process_event()
+
+    pr = PullRequest.objects.get(project=user_story.project, ref=user_story.ref)
+    assert pr.merged_by is None
+    assert pr.merged_at is None
+
+    closed_payload = {
+        "action": "closed",
+        "pull_request": {
+            "html_url": "https://github.com/owner/repo/pull/123",
+            "id": 12345,
+            "head": {
+                "ref": "TG-{}-mi-rama".format(user_story.ref),
+            },
+            "merged": True,
+            "merged_by": {
+                "login": "testuser",
+            },
+            "merged_at": "2026-07-21T14:39:26Z",
+        },
+        "repository": {
+            "full_name": "owner/repo",
+        },
+    }
+
+    ev_hook = event_hooks.PullRequestEventHook(user_story.project, closed_payload)
+    ev_hook.process_event()
+
+    assert PullRequest.objects.filter(project=user_story.project, ref=user_story.ref).count() == 1
+    pr = PullRequest.objects.get(project=user_story.project, ref=user_story.ref)
+    assert pr.merged_by == "testuser"
+    assert pr.merged_at is not None
+    assert pr.pull_request_url == "https://github.com/owner/repo/pull/123"
+
+
+def test_pull_request_event_assigned_ignored(client):
+    user_story = f.UserStoryFactory.create()
+    f.ProjectModulesConfigFactory(project=user_story.project, config={
+        "github": {}
+    })
+
+    payload = {
+        "action": "assigned",
+        "pull_request": {
+            "html_url": "https://github.com/owner/repo/pull/123",
+            "id": 12345,
+            "head": {
+                "ref": "TG-{}-mi-rama".format(user_story.ref),
+            },
+            "merged": False,
+            "merged_by": None,
+            "merged_at": None,
+        },
+        "repository": {
+            "full_name": "owner/repo",
+        },
+    }
+
+    ev_hook = event_hooks.PullRequestEventHook(user_story.project, payload)
+    ev_hook.process_event()
+
+    assert PullRequest.objects.filter(project=user_story.project, ref=user_story.ref).count() == 0
+
+
+def test_pull_request_event_closed_not_merged_ignored(client):
+    user_story = f.UserStoryFactory.create()
+    f.ProjectModulesConfigFactory(project=user_story.project, config={
+        "github": {}
+    })
+
+    payload = {
+        "action": "closed",
+        "pull_request": {
+            "html_url": "https://github.com/owner/repo/pull/123",
+            "id": 12345,
+            "head": {
+                "ref": "TG-{}-mi-rama".format(user_story.ref),
+            },
+            "merged": False,
+            "merged_by": None,
+            "merged_at": None,
+        },
+        "repository": {
+            "full_name": "owner/repo",
+        },
+    }
+
+    ev_hook = event_hooks.PullRequestEventHook(user_story.project, payload)
+    ev_hook.process_event()
+
+    assert PullRequest.objects.filter(project=user_story.project, ref=user_story.ref).count() == 0
+
+
+def test_pull_request_event_no_tg_branch(client):
+    user_story = f.UserStoryFactory.create()
+    f.ProjectModulesConfigFactory(project=user_story.project, config={
+        "github": {}
+    })
+
+    payload = {
+        "action": "closed",
+        "pull_request": {
+            "html_url": "https://github.com/owner/repo/pull/123",
+            "id": 12345,
+            "head": {
+                "ref": "feature/my-feature",
+            },
+            "merged": True,
+            "merged_by": {
+                "login": "testuser",
+            },
+            "merged_at": "2026-07-21T14:39:26Z",
+        },
+        "repository": {
+            "full_name": "owner/repo",
+        },
+    }
+
+    ev_hook = event_hooks.PullRequestEventHook(user_story.project, payload)
+    ev_hook.process_event()
+
+    assert PullRequest.objects.filter(project=user_story.project, ref=user_story.ref).count() == 0
+
+
+def test_pull_request_event_detected_closed(client):
+    project = f.ProjectFactory()
+    url = reverse("github-hook-list")
+    url = "%s?project=%s" % (url, project.id)
+    data = {
+        "action": "closed",
+        "pull_request": {
+            "merged": True,
+        },
+    }
+
+    GitHubViewSet._validate_signature = mock.Mock(return_value=True)
+
+    with mock.patch.object(event_hooks.PullRequestEventHook, "process_event") as process_event_mock:
+        response = client.post(url, json.dumps(data),
+                               HTTP_X_GITHUB_EVENT="pull_request",
+                               content_type="application/json")
+
+        assert process_event_mock.call_count == 1
+
+    assert response.status_code == 204
+
+
+def test_pull_request_event_detected_opened(client):
+    project = f.ProjectFactory()
+    url = reverse("github-hook-list")
+    url = "%s?project=%s" % (url, project.id)
+    data = {
+        "action": "opened",
+        "pull_request": {
+            "merged": False,
+        },
+    }
+
+    GitHubViewSet._validate_signature = mock.Mock(return_value=True)
+
+    with mock.patch.object(event_hooks.PullRequestEventHook, "process_event") as process_event_mock:
+        response = client.post(url, json.dumps(data),
+                               HTTP_X_GITHUB_EVENT="pull_request",
+                               content_type="application/json")
+
+        assert process_event_mock.call_count == 1
+
+    assert response.status_code == 204
 
 
 def test_replace_github_references():
