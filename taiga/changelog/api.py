@@ -34,10 +34,12 @@ class ChangelogEntryViewSet(ModelListViewSet):
             filters.CanViewProjectFilterBackend,
             project_query_param="repository__project",
         ),
+        filters.CreatedDateFilter,
     )
     # ChangelogEntry has no direct "project" FK (only via repository.project),
     # so "project" is mapped to the actual ORM lookup for the generic exact-match filter.
-    filter_fields = (("project", "repository__project"), "repository")
+    # CreatedDateFilter (above) adds created_date/__gte/__lte on top of these exact-match fields.
+    filter_fields = (("project", "repository__project"), "repository", "branch")
 
     def get_queryset(self):
         qs = self.model.objects.all()
