@@ -6,7 +6,7 @@
 # Copyright (c) 2021-present Kaleidos INC
 
 from taiga.base.api import serializers
-from taiga.base.fields import Field, MethodField
+from taiga.base.fields import Field, MethodField, DateTimeField
 from taiga.base.neighbors import NeighborsSerializerMixin
 
 from taiga.mdrender.service import render as mdrender
@@ -20,6 +20,18 @@ from taiga.projects.notifications.mixins import WatchedResourceSerializer
 from taiga.projects.tagging.serializers import TaggedInProjectResourceSerializer
 from taiga.projects.votes.mixins.serializers import VoteResourceSerializerMixin
 from taiga.projects.history.mixins import TotalCommentsSerializerMixin
+
+
+class PullRequestSerializer(serializers.LightSerializer):
+    id = Field()
+    pull_request_url = Field()
+    branch_name = Field()
+    pull_request_id = Field()
+    repository = Field()
+    ref = Field()
+    merged_by = Field()
+    merged_at = DateTimeField()
+    created_at = DateTimeField()
 
 
 class OriginItemSerializer(serializers.LightSerializer):
@@ -76,8 +88,16 @@ class UserStoryListSerializer(ProjectExtraInfoSerializerMixin,
     tasks = MethodField()
     total_attachments = Field()
     swimlane = Field(attr="swimlane_id")
+    pull_requests = MethodField()
 
     assigned_users = MethodField()
+
+    def get_pull_requests(self, obj):
+        from taiga.projects.userstories.models import PullRequest
+        return PullRequestSerializer(
+            PullRequest.objects.filter(project=obj.project, ref=obj.ref),
+            many=True
+        ).data
 
     def get_assigned_users(self, obj):
         """Get the assigned of an object.

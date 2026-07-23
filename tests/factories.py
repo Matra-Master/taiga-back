@@ -313,6 +313,17 @@ class UserStoryFactory(Factory):
                 self.assigned_users.add(user)
 
 
+class PullRequestFactory(Factory):
+    class Meta:
+        model = "userstories.PullRequest"
+        strategy = factory.CREATE_STRATEGY
+
+    project = factory.SubFactory("tests.factories.ProjectFactory")
+    ref = factory.Sequence(lambda n: n)
+    pull_request_url = factory.Sequence(lambda n: "https://github.com/owner/repo/pull/{}".format(n))
+    branch_name = factory.Sequence(lambda n: "TG-{}-feature".format(n))
+
+
 class TaskFactory(Factory):
     class Meta:
         model = "tasks.Task"
