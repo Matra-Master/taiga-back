@@ -358,6 +358,7 @@ INSTALLED_APPS = [
     "taiga.export_import",
     "taiga.feedback",
     "taiga.stats",
+    "taiga.changelog",
     "taiga.hooks.github",
     "taiga.hooks.gitlab",
     "taiga.hooks.bitbucket",

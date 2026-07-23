@@ -11,9 +11,9 @@ from . import event_hooks
 
 import hmac
 import hashlib
-# import logging
+import logging
 
-# logger = logging.getLogger("taiga.hooks.github")
+logger = logging.getLogger("taiga.hooks.github")
 
 class GitHubViewSet(BaseWebhookApiViewSet):
     event_hook_classes = {
@@ -25,13 +25,13 @@ class GitHubViewSet(BaseWebhookApiViewSet):
 
     def create(self, request, *args, **kwargs):
         # ponytail: loguea todo evento entrante (delivery/event/payload) para desarrollo a medida.
-        # logger.info(
-        #     "GitHub webhook recibido: delivery=%s event=%s project=%s payload=%s",
-        #     request.headers.get("x-github-delivery"),
-        #     request.headers.get("x-github-event"),
-        #     request.GET.get("project"),
-        #     request.body.decode("utf-8", "replace"),
-        # )
+        logger.info(
+            "GitHub webhook recibido: delivery=%s event=%s project=%s payload=%s",
+            request.headers.get("x-github-delivery"),
+            request.headers.get("x-github-event"),
+            request.GET.get("project"),
+            request.body.decode("utf-8", "replace"),
+        )
         return super().create(request, *args, **kwargs)
 
     def _validate_signature(self, project, request):

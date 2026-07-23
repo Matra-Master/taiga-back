@@ -324,6 +324,16 @@ class PullRequestFactory(Factory):
     branch_name = factory.Sequence(lambda n: "TG-{}-feature".format(n))
 
 
+class ChangelogRepositoryFactory(Factory):
+    class Meta:
+        model = "changelog.ChangelogRepository"
+        strategy = factory.CREATE_STRATEGY
+
+    project = factory.SubFactory("tests.factories.ProjectFactory")
+    full_name = factory.Sequence(lambda n: "owner/repo-{}".format(n))
+    branches = ["main"]
+
+
 class TaskFactory(Factory):
     class Meta:
         model = "tasks.Task"

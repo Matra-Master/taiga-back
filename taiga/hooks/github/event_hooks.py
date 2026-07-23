@@ -192,3 +192,15 @@ class PushEventHook(BaseGitHubEventHook, BasePushEventHook):
             })
 
         return result
+
+    def process_event(self):
+        # Runs first and unconditionally: the base TG-<n> status-change/mention
+        # scan below raises ActionSyntaxException (-> 400) when a commit
+        # references a ref that doesn't exist (see BasePushEventHook), which
+        # would otherwise stop the changelog from ever being recorded for
+        # that push. Recording it here keeps that concern independent from
+        # the pre-existing TG-ref logic.
+        from taiga.changelog.services import store_push
+        store_push(self.project, self.payload)
+
+        super().process_event()
