@@ -301,6 +301,8 @@ class ProjectSerializer(serializers.LightSerializer):
     default_issue_type = Field(attr="default_issue_type_id")
     default_swimlane = Field(attr="default_swimlane_id")
 
+    webhook_status_map = Field()
+
     my_permissions = MethodField()
 
     i_am_owner = MethodField()

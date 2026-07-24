@@ -32,6 +32,14 @@ class PullRequestSerializer(serializers.LightSerializer):
     merged_by = Field()
     merged_at = DateTimeField()
     created_at = DateTimeField()
+    status = Field()
+
+
+def sort_pull_requests(queryset):
+    # ponytail: los que necesitan cambios van primero; el resto conserva el orden
+    # del modelo (project, ref, -merged_at). Un `sorted` en Python alcanza, no
+    # hace falta un Case/When en la query.
+    return sorted(queryset, key=lambda pr: pr.status != "changes_requested")
 
 
 class OriginItemSerializer(serializers.LightSerializer):
@@ -94,10 +102,8 @@ class UserStoryListSerializer(ProjectExtraInfoSerializerMixin,
 
     def get_pull_requests(self, obj):
         from taiga.projects.userstories.models import PullRequest
-        return PullRequestSerializer(
-            PullRequest.objects.filter(project=obj.project, ref=obj.ref),
-            many=True
-        ).data
+        qs = PullRequest.objects.filter(project=obj.project, ref=obj.ref)
+        return PullRequestSerializer(sort_pull_requests(qs), many=True).data
 
     def get_assigned_users(self, obj):
         """Get the assigned of an object.

@@ -205,6 +205,12 @@ class Project(ProjectDefaults, TaggedMixin, TagsColorsMixin, models.Model):
                                               verbose_name=_("active issues panel"))
     is_changelog_activated = models.BooleanField(default=False, null=False, blank=True,
                                                  verbose_name=_("active changelog panel"))
+    # ponytail: mapeo evento-de-webhook -> status destino, por US/Issue. JSON en vez de
+    # 8 FKs porque tolera ids de status borrados/renombrados (simplemente no transiciona).
+    # Forma: {"userstory": {"branch": id, "pr_open": id, "all_merged": id, "changes_requested": id},
+    #         "issue": {...}}
+    webhook_status_map = JSONField(null=True, blank=True,
+                                   verbose_name=_("webhook status transitions"))
     videoconferences = models.CharField(max_length=250, null=True, blank=True,
                                         choices=choices.VIDEOCONFERENCES_CHOICES,
                                         verbose_name=_("videoconference system"))

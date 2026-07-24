@@ -19,7 +19,7 @@ from taiga.projects.mixins.serializers import StatusExtraInfoSerializerMixin
 from taiga.projects.notifications.mixins import WatchedResourceSerializer
 from taiga.projects.tagging.serializers import TaggedInProjectResourceSerializer
 from taiga.projects.votes.mixins.serializers import VoteResourceSerializerMixin
-from taiga.projects.userstories.serializers import PullRequestSerializer
+from taiga.projects.userstories.serializers import PullRequestSerializer, sort_pull_requests
 
 
 class IssueListSerializer(VoteResourceSerializerMixin, WatchedResourceSerializer,
@@ -48,10 +48,8 @@ class IssueListSerializer(VoteResourceSerializerMixin, WatchedResourceSerializer
 
     def get_pull_requests(self, obj):
         from taiga.projects.userstories.models import PullRequest
-        return PullRequestSerializer(
-            PullRequest.objects.filter(project=obj.project, ref=obj.ref),
-            many=True
-        ).data
+        qs = PullRequest.objects.filter(project=obj.project, ref=obj.ref)
+        return PullRequestSerializer(sort_pull_requests(qs), many=True).data
 
 
 class IssueSerializer(IssueListSerializer):

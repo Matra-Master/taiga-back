@@ -1112,6 +1112,277 @@ def test_pull_request_event_detected_opened(client):
     assert response.status_code == 204
 
 
+def test_create_event_branch_moves_user_story(client, settings):
+    settings.RULOBOT_USER_ID = None  # cae al usuario de sistema "github-*"
+
+    review_status = f.UserStoryStatusFactory()
+    in_progress_status = f.UserStoryStatusFactory(project=review_status.project)
+    user_story = f.UserStoryFactory.create(status=review_status, project=review_status.project)
+    user_story.project.webhook_status_map = {"userstory": {"branch": in_progress_status.id}}
+    user_story.project.save()
+    take_snapshot(user_story, user=user_story.project.owner)  # baseline, como el resto de los hooks
+
+    payload = {
+        "ref": "TG-{}-mi-rama".format(user_story.ref),
+        "ref_type": "branch",
+        "repository": {"full_name": "owner/repo"},
+    }
+
+    ev_hook = event_hooks.CreateEventHook(user_story.project, payload)
+    ev_hook.process_event()
+
+    user_story.refresh_from_db()
+    assert user_story.status_id == in_progress_status.id
+
+    history = get_history_queryset_by_model_instance(user_story)
+    assert history.count() == 1
+    assert "RuloBot" in history[0].comment
+
+
+def test_create_event_ignores_non_branch_refs(client):
+    status = f.UserStoryStatusFactory()
+    user_story = f.UserStoryFactory.create(status=status, project=status.project)
+    other_status = f.UserStoryStatusFactory(project=status.project)
+    user_story.project.webhook_status_map = {"userstory": {"branch": other_status.id}}
+    user_story.project.save()
+
+    payload = {
+        "ref": "TG-{}-mi-rama".format(user_story.ref),
+        "ref_type": "tag",
+        "repository": {"full_name": "owner/repo"},
+    }
+
+    ev_hook = event_hooks.CreateEventHook(user_story.project, payload)
+    ev_hook.process_event()
+
+    user_story.refresh_from_db()
+    assert user_story.status_id == status.id
+
+
+def test_pull_request_opened_moves_user_story_to_configured_status():
+    open_status = f.UserStoryStatusFactory()
+    review_status = f.UserStoryStatusFactory(project=open_status.project)
+    user_story = f.UserStoryFactory.create(status=open_status, project=open_status.project)
+    user_story.project.webhook_status_map = {"userstory": {"pr_open": review_status.id}}
+    user_story.project.save()
+
+    payload = {
+        "action": "opened",
+        "pull_request": {
+            "html_url": "https://github.com/owner/repo/pull/123",
+            "id": 12345,
+            "head": {"ref": "TG-{}-mi-rama".format(user_story.ref)},
+            "merged": False,
+            "merged_by": None,
+            "merged_at": None,
+        },
+        "repository": {"full_name": "owner/repo"},
+    }
+
+    ev_hook = event_hooks.PullRequestEventHook(user_story.project, payload)
+    ev_hook.process_event()
+
+    user_story.refresh_from_db()
+    assert user_story.status_id == review_status.id
+
+    pr = PullRequest.objects.get(project=user_story.project, ref=user_story.ref)
+    assert pr.status == PullRequest.STATUS_OPEN
+
+
+def test_pull_request_all_merged_waits_for_every_pr():
+    review_status = f.UserStoryStatusFactory()
+    testing_status = f.UserStoryStatusFactory(project=review_status.project)
+    user_story = f.UserStoryFactory.create(status=review_status, project=review_status.project)
+    user_story.project.webhook_status_map = {"userstory": {"all_merged": testing_status.id}}
+    user_story.project.save()
+
+    # Un PR de este mismo ticket sigue abierto
+    f.PullRequestFactory(
+        project=user_story.project,
+        ref=user_story.ref,
+        pull_request_url="https://github.com/owner/repo/pull/1",
+        status=PullRequest.STATUS_OPEN,
+    )
+
+    payload = {
+        "action": "closed",
+        "pull_request": {
+            "html_url": "https://github.com/owner/repo/pull/2",
+            "id": 2,
+            "head": {"ref": "TG-{}-mi-rama".format(user_story.ref)},
+            "merged": True,
+            "merged_by": {"login": "testuser"},
+            "merged_at": "2026-07-21T14:39:26Z",
+        },
+        "repository": {"full_name": "owner/repo"},
+    }
+
+    ev_hook = event_hooks.PullRequestEventHook(user_story.project, payload)
+    ev_hook.process_event()
+
+    user_story.refresh_from_db()
+    assert user_story.status_id == review_status.id  # no se movió, falta un PR
+
+
+def test_pull_request_all_merged_triggers_when_last_pr_merges():
+    review_status = f.UserStoryStatusFactory()
+    testing_status = f.UserStoryStatusFactory(project=review_status.project)
+    user_story = f.UserStoryFactory.create(status=review_status, project=review_status.project)
+    user_story.project.webhook_status_map = {"userstory": {"all_merged": testing_status.id}}
+    user_story.project.save()
+
+    # El otro PR de este ticket ya está mergeado
+    f.PullRequestFactory(
+        project=user_story.project,
+        ref=user_story.ref,
+        pull_request_url="https://github.com/owner/repo/pull/1",
+        status=PullRequest.STATUS_MERGED,
+    )
+
+    payload = {
+        "action": "closed",
+        "pull_request": {
+            "html_url": "https://github.com/owner/repo/pull/2",
+            "id": 2,
+            "head": {"ref": "TG-{}-mi-rama".format(user_story.ref)},
+            "merged": True,
+            "merged_by": {"login": "testuser"},
+            "merged_at": "2026-07-21T14:39:26Z",
+        },
+        "repository": {"full_name": "owner/repo"},
+    }
+
+    ev_hook = event_hooks.PullRequestEventHook(user_story.project, payload)
+    ev_hook.process_event()
+
+    user_story.refresh_from_db()
+    assert user_story.status_id == testing_status.id
+
+
+def test_pull_request_review_changes_requested_moves_us_and_marks_pr():
+    review_status = f.UserStoryStatusFactory()
+    rework_status = f.UserStoryStatusFactory(project=review_status.project)
+    user_story = f.UserStoryFactory.create(status=review_status, project=review_status.project)
+    user_story.project.webhook_status_map = {"userstory": {"changes_requested": rework_status.id}}
+    user_story.project.save()
+
+    f.PullRequestFactory(
+        project=user_story.project,
+        ref=user_story.ref,
+        pull_request_url="https://github.com/owner/repo/pull/123",
+        branch_name="TG-{}-mi-rama".format(user_story.ref),
+        status=PullRequest.STATUS_OPEN,
+    )
+
+    payload = {
+        "action": "submitted",
+        "review": {
+            "state": "changes_requested",
+            "html_url": "https://github.com/owner/repo/pull/123#review",
+        },
+        "pull_request": {
+            "html_url": "https://github.com/owner/repo/pull/123",
+            "head": {"ref": "TG-{}-mi-rama".format(user_story.ref)},
+        },
+        "repository": {"full_name": "owner/repo"},
+    }
+
+    ev_hook = event_hooks.PullRequestReviewEventHook(user_story.project, payload)
+    ev_hook.process_event()
+
+    user_story.refresh_from_db()
+    assert user_story.status_id == rework_status.id
+
+    pr = PullRequest.objects.get(project=user_story.project, ref=user_story.ref)
+    assert pr.status == PullRequest.STATUS_CHANGES_REQUESTED
+
+
+def test_pull_request_review_approved_is_ignored():
+    review_status = f.UserStoryStatusFactory()
+    rework_status = f.UserStoryStatusFactory(project=review_status.project)
+    user_story = f.UserStoryFactory.create(status=review_status, project=review_status.project)
+    user_story.project.webhook_status_map = {"userstory": {"changes_requested": rework_status.id}}
+    user_story.project.save()
+
+    payload = {
+        "action": "submitted",
+        "review": {
+            "state": "approved",
+            "html_url": "https://github.com/owner/repo/pull/123#review",
+        },
+        "pull_request": {
+            "html_url": "https://github.com/owner/repo/pull/123",
+            "head": {"ref": "TG-{}-mi-rama".format(user_story.ref)},
+        },
+        "repository": {"full_name": "owner/repo"},
+    }
+
+    ev_hook = event_hooks.PullRequestReviewEventHook(user_story.project, payload)
+    ev_hook.process_event()
+
+    user_story.refresh_from_db()
+    assert user_story.status_id == review_status.id
+
+
+def test_transition_is_noop_when_event_not_configured():
+    # select vacío en Attributes -> ese evento no mueve el ticket (p.ej. Issues al mergear)
+    status = f.IssueStatusFactory()
+    issue = f.IssueFactory.create(status=status, project=status.project)
+    issue.project.webhook_status_map = {"issue": {}}
+    issue.project.save()
+
+    f.PullRequestFactory(
+        project=issue.project,
+        ref=issue.ref,
+        pull_request_url="https://github.com/owner/repo/pull/1",
+        status=PullRequest.STATUS_MERGED,
+    )
+
+    payload = {
+        "action": "closed",
+        "pull_request": {
+            "html_url": "https://github.com/owner/repo/pull/2",
+            "id": 2,
+            "head": {"ref": "TG-{}-mi-rama".format(issue.ref)},
+            "merged": True,
+            "merged_by": {"login": "testuser"},
+            "merged_at": "2026-07-21T14:39:26Z",
+        },
+        "repository": {"full_name": "owner/repo"},
+    }
+
+    ev_hook = event_hooks.PullRequestEventHook(issue.project, payload)
+    ev_hook.process_event()
+
+    issue.refresh_from_db()
+    assert issue.status_id == status.id  # Issues se mantienen en su lugar
+
+
+def test_transitions_are_attributed_to_rulobot(settings):
+    bot = f.UserFactory()
+    settings.RULOBOT_USER_ID = bot.id
+
+    review_status = f.UserStoryStatusFactory()
+    in_progress_status = f.UserStoryStatusFactory(project=review_status.project)
+    user_story = f.UserStoryFactory.create(status=review_status, project=review_status.project)
+    user_story.project.webhook_status_map = {"userstory": {"branch": in_progress_status.id}}
+    user_story.project.save()
+    take_snapshot(user_story, user=user_story.project.owner)  # baseline, como el resto de los hooks
+
+    payload = {
+        "ref": "TG-{}-mi-rama".format(user_story.ref),
+        "ref_type": "branch",
+        "repository": {"full_name": "owner/repo"},
+    }
+
+    ev_hook = event_hooks.CreateEventHook(user_story.project, payload)
+    ev_hook.process_event()
+
+    history = get_history_queryset_by_model_instance(user_story)
+    assert history.count() == 1
+    assert history[0].user["pk"] == bot.id
+
+
 def test_replace_github_references():
     ev_hook = event_hooks.BaseGitHubEventHook
     assert ev_hook.replace_github_references(None, "project-url", "#2") == "[GitHub#2](project-url/issues/2)"

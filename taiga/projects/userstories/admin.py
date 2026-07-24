@@ -65,9 +65,9 @@ class UserStoryAdmin(admin.ModelAdmin):
 
 
 class PullRequestAdmin(admin.ModelAdmin):
-    list_display = ["project", "ref", "pull_request_url", "branch_name", "repository", "merged_at"]
+    list_display = ["project", "ref", "pull_request_url", "branch_name", "repository", "status", "merged_at"]
     readonly_fields = ["pull_request_url", "branch_name", "pull_request_id",
-                       "repository", "merged_by", "merged_at", "created_at", "updated_at"]
+                       "repository", "status", "merged_by", "merged_at", "created_at", "updated_at"]
     raw_id_fields = ["project"]
     search_fields = ["pull_request_url", "branch_name", "ref"]
 
