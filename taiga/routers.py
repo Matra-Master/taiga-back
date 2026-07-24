@@ -269,6 +269,14 @@ from taiga.hooks.github.api import GitHubViewSet
 router.register(r"github-hook", GitHubViewSet, base_name="github-hook")
 
 
+# Changelog (fed by the GitHub push webhook, see taiga.changelog.services.store_push)
+from taiga.changelog.api import ChangelogRepositoryViewSet
+from taiga.changelog.api import ChangelogEntryViewSet
+
+router.register(r"changelog-repositories", ChangelogRepositoryViewSet, base_name="changelog-repositories")
+router.register(r"changelog-entries", ChangelogEntryViewSet, base_name="changelog-entries")
+
+
 # Gitlab webhooks
 from taiga.hooks.gitlab.api import GitLabViewSet
 

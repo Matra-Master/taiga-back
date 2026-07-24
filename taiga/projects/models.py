@@ -203,6 +203,8 @@ class Project(ProjectDefaults, TaggedMixin, TagsColorsMixin, models.Model):
                                             verbose_name=_("active wiki panel"))
     is_issues_activated = models.BooleanField(default=True, null=False, blank=True,
                                               verbose_name=_("active issues panel"))
+    is_changelog_activated = models.BooleanField(default=False, null=False, blank=True,
+                                                 verbose_name=_("active changelog panel"))
     videoconferences = models.CharField(max_length=250, null=True, blank=True,
                                         choices=choices.VIDEOCONFERENCES_CHOICES,
                                         verbose_name=_("videoconference system"))
@@ -1018,6 +1020,8 @@ class ProjectTemplate(TaggedMixin, TagsColorsMixin, models.Model):
                                             verbose_name=_("active wiki panel"))
     is_issues_activated = models.BooleanField(default=True, null=False, blank=True,
                                               verbose_name=_("active issues panel"))
+    is_changelog_activated = models.BooleanField(default=False, null=False, blank=True,
+                                                 verbose_name=_("active changelog panel"))
     is_looking_for_people = models.BooleanField(default=False, null=False, blank=True,
                                                 verbose_name=_("is looking for people"))
     looking_for_people_note = models.TextField(default="", null=False, blank=True,
@@ -1073,6 +1077,7 @@ class ProjectTemplate(TaggedMixin, TagsColorsMixin, models.Model):
         self.is_kanban_activated = project.is_kanban_activated
         self.is_wiki_activated = project.is_wiki_activated
         self.is_issues_activated = project.is_issues_activated
+        self.is_changelog_activated = project.is_changelog_activated
         self.videoconferences = project.videoconferences
         self.videoconferences_extra_data = project.videoconferences_extra_data
 
@@ -1261,6 +1266,7 @@ class ProjectTemplate(TaggedMixin, TagsColorsMixin, models.Model):
         project.is_kanban_activated = self.is_kanban_activated
         project.is_wiki_activated = self.is_wiki_activated
         project.is_issues_activated = self.is_issues_activated
+        project.is_changelog_activated = self.is_changelog_activated
         project.videoconferences = self.videoconferences
         project.videoconferences_extra_data = self.videoconferences_extra_data
 
