@@ -8,40 +8,15 @@
 import logging
 import re
 
-from django.conf import settings
-from django.contrib.auth import get_user_model
 from django.utils.translation import gettext as _
 
 from taiga.hooks.event_hooks import (BaseEventHook, BaseIssueEventHook, BaseIssueCommentEventHook,
-                                     BasePushEventHook,
+                                     BasePushEventHook, BaseStatusTransitionMixin, TG_REF_RE,
                                      ISSUE_ACTION_CREATE, ISSUE_ACTION_UPDATE, ISSUE_ACTION_CLOSE,
                                      ISSUE_ACTION_REOPEN)
-from taiga.projects.history.services import take_snapshot
-from taiga.projects.notifications.services import send_notifications
-from taiga.projects.models import UserStoryStatus, IssueStatus
-from taiga.projects.userstories.models import UserStory, PullRequest
-from taiga.projects.issues.models import Issue
-from taiga.projects.tasks.models import Task
-from taiga.projects.epics.models import Epic
+from taiga.projects.userstories.models import PullRequest
 
 logger = logging.getLogger("taiga.hooks.github")
-
-# TG-<ref> tal como aparece en nombres de rama (create/pull_request/pull_request_review)
-TG_REF_RE = re.compile(r"TG-(\d+)", re.IGNORECASE)
-
-
-def get_rulobot_user():
-    """Usuario que figura como autor de las transiciones automáticas de columna.
-
-    Configurable vía settings.RULOBOT_USER_ID; si no está seteado o no existe, se
-    cae al usuario de sistema de GitHub (mismo que usa el resto de este hook).
-    """
-    User = get_user_model()
-    bot_id = getattr(settings, "RULOBOT_USER_ID", None)
-    user = User.objects.filter(id=bot_id).first() if bot_id else None
-    if user is None:
-        user = User.objects.filter(is_system=True, username__startswith="github").first()
-    return user
 
 
 class BaseGitHubEventHook():
@@ -56,55 +31,11 @@ class BaseGitHubEventHook():
         return re.sub(r"(\s|^)#(\d+)(\s|$)", template, wiki_text, 0, re.M)
 
 
-class GitHubStatusTransitionMixin():
-    """Mueve un US/Issue de columna según `project.webhook_status_map` y deja
-    rastro en el historial a nombre de RuloBot. Usada por los hooks que
-    reaccionan a ramas/PRs/reviews (create, pull_request, pull_request_review).
-    """
-    # Task/Epic quedan afuera a propósito: el pedido original solo cubre US e Issues.
-    _TRANSITION_TARGETS = {
-        UserStory: ("userstory", UserStoryStatus),
-        Issue: ("issue", IssueStatus),
-    }
-
-    def _find_entity(self, tg_ref):
-        for Model in [UserStory, Issue, Task, Epic]:
-            try:
-                return Model.objects.get(project=self.project, ref=tg_ref)
-            except Model.DoesNotExist:
-                continue
-        return None
-
-    def _transition(self, entity, event_key, reason):
-        target = self._TRANSITION_TARGETS.get(type(entity))
-        if target is None:
-            return
-
-        map_key, StatusClass = target
-        status_map = (entity.project.webhook_status_map or {}).get(map_key) or {}
-        status_id = status_map.get(event_key)
-        if not status_id:
-            return  # sin configurar para este evento -> no se mueve
-
-        status = StatusClass.objects.filter(project=entity.project, id=status_id).first()
-        if status is None:
-            logger.warning(
-                "webhook_status_map: status id %s no existe (project=%s, event=%s)",
-                status_id, entity.project_id, event_key,
-            )
-            return
-
-        if entity.status_id == status.id:
-            return  # ya está ahí, evita un entry de historial vacío
-
-        entity.status = status
-        entity.save()
-
-        comment = _("RuloBot moved this to **{status}** ({reason}).").format(
-            status=status.name, reason=reason,
-        )
-        snapshot = take_snapshot(entity, comment=comment, user=get_rulobot_user())
-        send_notifications(entity, history=snapshot)
+class GitHubStatusTransitionMixin(BaseStatusTransitionMixin):
+    """Alias con nombre propio de `BaseStatusTransitionMixin` para los hooks de
+    GitHub (create, pull_request, pull_request_review) — sin lógica propia,
+    toda la lógica de transición vive en la clase base agnóstica de proveedor."""
+    pass
 
 #!IMPORTANTE, WRAPPER DEL HOOK BASE DONDE SE CARGA LA IMPLEMENTACION DE CADA UNO PARA EL CASO GITHUB
 class IssuesEventHook(BaseGitHubEventHook, BaseIssueEventHook):
@@ -354,6 +285,6 @@ class PushEventHook(BaseGitHubEventHook, BasePushEventHook):
         # that push. Recording it here keeps that concern independent from
         # the pre-existing TG-ref logic.
         from taiga.changelog.services import store_push
-        store_push(self.project, self.payload)
+        store_push(self.project, self.payload, platform_slug=self.platform_slug)
 
         super().process_event()

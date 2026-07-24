@@ -24,6 +24,7 @@ class GitLabViewSet(BaseWebhookApiViewSet):
         "push": event_hooks.PushEventHook,
         "issue": event_hooks.IssuesEventHook,
         "note": event_hooks.IssueCommentEventHook,
+        "merge_request": event_hooks.MergeRequestEventHook,
     }
 
     def _validate_signature(self, project, request):

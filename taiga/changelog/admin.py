@@ -12,8 +12,9 @@ from . import models
 
 @admin.register(models.ChangelogRepository)
 class ChangelogRepositoryAdmin(admin.ModelAdmin):
-    list_display = ["id", "project", "full_name", "branches", "created_date"]
+    list_display = ["id", "project", "platform", "full_name", "branches", "created_date"]
     list_display_links = ["id", "full_name"]
+    list_filter = ["platform"]
     search_fields = ["full_name", "project__name", "project__slug"]
     raw_id_fields = ["project"]
 

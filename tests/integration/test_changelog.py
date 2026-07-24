@@ -131,6 +131,29 @@ def test_store_push_ignored_for_non_branch_refs():
     assert ChangelogEntry.objects.filter(repository=repo).count() == 0
 
 
+def test_store_push_disambiguates_same_full_name_across_platforms():
+    # "MatSoren/test-taiga-wh" existe como repo de GitHub Y como repo de GitLab
+    # en el mismo proyecto (dos configuraciones legitimas, no un duplicado).
+    project = f.ProjectFactory()
+    github_repo = f.ChangelogRepositoryFactory(
+        project=project, platform="github", full_name="MatSoren/test-taiga-wh", branches=["main"],
+    )
+    gitlab_repo = f.ChangelogRepositoryFactory(
+        project=project, platform="gitlab", full_name="MatSoren/test-taiga-wh", branches=["main"],
+    )
+
+    github_entry = services.store_push(project, PUSH_PAYLOAD, platform_slug="github")
+    gitlab_payload = dict(
+        PUSH_PAYLOAD,
+        after="deadbeef" * 5,
+        project={"path_with_namespace": "MatSoren/test-taiga-wh", "web_url": "https://gitlab.com/MatSoren/test-taiga-wh"},
+    )
+    gitlab_entry = services.store_push(project, gitlab_payload, platform_slug="gitlab")
+
+    assert github_entry.repository_id == github_repo.id
+    assert gitlab_entry.repository_id == gitlab_repo.id
+
+
 def test_push_event_hook_still_stores_changelog_entry():
     # End-to-end through the real GitHub push event hook (not just the
     # service): confirms the hook keeps running its existing TG-<n>
