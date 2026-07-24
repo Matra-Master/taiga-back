@@ -60,6 +60,19 @@ class PullRequest(models.Model):
         null=True, blank=True,
         verbose_name=_("merged at"),
     )
+    STATUS_OPEN = "open"
+    STATUS_MERGED = "merged"
+    STATUS_CHANGES_REQUESTED = "changes_requested"
+    STATUS_CHOICES = (
+        (STATUS_OPEN, _("Open")),
+        (STATUS_MERGED, _("Merged")),
+        (STATUS_CHANGES_REQUESTED, _("Changes requested")),
+    )
+    status = models.CharField(
+        max_length=20, null=False, blank=False,
+        choices=STATUS_CHOICES, default=STATUS_OPEN,
+        verbose_name=_("status"),
+    )
     created_at = models.DateTimeField(
         null=False, blank=False,
         verbose_name=_("created at"),

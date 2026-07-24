@@ -21,6 +21,8 @@ class GitHubViewSet(BaseWebhookApiViewSet):
         "issues": event_hooks.IssuesEventHook,
         "issue_comment": event_hooks.IssueCommentEventHook,
         "pull_request": event_hooks.PullRequestEventHook,
+        "create": event_hooks.CreateEventHook,
+        "pull_request_review": event_hooks.PullRequestReviewEventHook,
     }
 
     def create(self, request, *args, **kwargs):

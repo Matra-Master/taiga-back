@@ -285,6 +285,7 @@ class ProjectValidator(validators.ModelValidator):
     anon_permissions = PgArrayField(required=False)
     public_permissions = PgArrayField(required=False)
     tags = TagsField(default=[], required=False)
+    webhook_status_map = JSONField(required=False, label=_("webhook status transitions"))
 
     class Meta:
         model = models.Project

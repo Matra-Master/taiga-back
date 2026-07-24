@@ -117,6 +117,12 @@ CELERY_TASK_DEFAULT_ROUTING_KEY = 'task.default'
 
 
 #########################################
+## RULOBOT (webhook status transitions)
+#########################################
+
+# RULOBOT_USER_ID = 1
+
+#########################################
 ## TELEMETRY
 #########################################
 
