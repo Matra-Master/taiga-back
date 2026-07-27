@@ -104,14 +104,25 @@ class IssueCommentEventHook(BaseGitLabEventHook, BaseIssueCommentEventHook):
 
 class MergeRequestEventHook(GitLabStatusTransitionMixin, BaseGitLabEventHook, BaseEventHook):
     """Evento `merge_request` de GitLab. GitLab no tiene un estado formal de
-    "changes requested": usamos `action == "unapproved"` como equivalente,
-    asumiendo que el proyecto tiene habilitado el flujo de aprobaciones de MR
-    (si no lo tiene, ese trigger puntual simplemente no se dispara)."""
+    "changes requested" como acción propia: lo detectamos por dos vías
+    distintas, según qué flujo use el equipo -
+      - Approval Rules: alguien que había aprobado usa "Unapprove"
+        -> action == "unapproved".
+      - Reviewers (el botón "Request changes" del dropdown de review): no
+        dispara una acción propia, viaja como action == "update" con el
+        reviewer en estado "requested_changes" dentro del array `reviewers`
+        de nivel raíz del payload (confirmado contra la doc de GitLab)."""
 
-    _ACTIONS_OF_INTEREST = {"open", "merge", "unapproved"}
+    _ACTIONS_OF_INTEREST = {"open", "merge", "unapproved", "update"}
 
     def ignore(self):
         return self.payload.get("object_attributes", {}).get("action") not in self._ACTIONS_OF_INTEREST
+
+    def _reviewer_requested_changes(self):
+        return any(
+            reviewer.get("state") == "requested_changes"
+            for reviewer in self.payload.get("reviewers") or []
+        )
 
     def process_event(self):
         if self.ignore():
@@ -119,6 +130,11 @@ class MergeRequestEventHook(GitLabStatusTransitionMixin, BaseGitLabEventHook, Ba
 
         attrs = self.payload.get("object_attributes", {})
         action = attrs.get("action")
+        requested_changes = action == "unapproved" or self._reviewer_requested_changes()
+
+        if action == "update" and not requested_changes:
+            return  # update ajeno (título, labels, etc.) -> no-op silencioso, no es un warning
+
         branch_name = attrs.get("source_branch")
         mr_url = attrs.get("url")
         mr_id = attrs.get("id")
@@ -163,12 +179,12 @@ class MergeRequestEventHook(GitLabStatusTransitionMixin, BaseGitLabEventHook, Ba
             all_prs = PullRequest.objects.filter(project=self.project, ref=tg_ref)
             if all_prs.exists() and not all_prs.exclude(status=PullRequest.STATUS_MERGED).exists():
                 self._transition(entity, "all_merged", _("all linked merge requests were merged"))
-        elif action == "unapproved":
+        elif requested_changes:
             PullRequest.objects.filter(pull_request_url=mr_url).update(
                 status=PullRequest.STATUS_CHANGES_REQUESTED
             )
             self._transition(entity, "changes_requested", _("changes requested on %s") % mr_url)
-        else:  # open
+        elif action == "open":
             defaults["status"] = PullRequest.STATUS_OPEN
             PullRequest.objects.get_or_create(pull_request_url=mr_url, defaults=defaults)
             self._transition(entity, "pr_open", _("merge request opened: %s") % mr_url)

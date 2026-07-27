@@ -1635,6 +1635,79 @@ def test_merge_request_update_action_is_ignored():
     assert user_story.status_id == status.id
 
 
+def test_merge_request_reviewer_requested_changes_moves_us_and_marks_pr():
+    # El botón "Request changes" del dropdown de reviewer (distinto de
+    # "Unapprove") no dispara una acción propia: viaja como action=="update"
+    # con el reviewer en estado "requested_changes" dentro del array
+    # `reviewers` de nivel raíz del payload.
+    review_status = f.UserStoryStatusFactory()
+    rework_status = f.UserStoryStatusFactory(project=review_status.project)
+    user_story = f.UserStoryFactory.create(status=review_status, project=review_status.project)
+    user_story.project.webhook_status_map = {"userstory": {"changes_requested": rework_status.id}}
+    user_story.project.save()
+
+    f.PullRequestFactory(
+        project=user_story.project,
+        ref=user_story.ref,
+        pull_request_url="http://example.com/owner/repo/merge_requests/1",
+        branch_name="TG-{}-mi-rama".format(user_story.ref),
+        status=PullRequest.STATUS_OPEN,
+    )
+
+    payload = {
+        "object_kind": "merge_request",
+        "user": {"username": "testuser"},
+        "project": {"path_with_namespace": "owner/repo", "web_url": "http://example.com/owner/repo"},
+        "object_attributes": {
+            "id": 1,
+            "source_branch": "TG-{}-mi-rama".format(user_story.ref),
+            "url": "http://example.com/owner/repo/merge_requests/1",
+            "action": "update",
+        },
+        "reviewers": [
+            {"id": 7, "username": "areviewer", "state": "requested_changes"},
+        ],
+    }
+
+    ev_hook = event_hooks.MergeRequestEventHook(user_story.project, payload)
+    ev_hook.process_event()
+
+    user_story.refresh_from_db()
+    assert user_story.status_id == rework_status.id
+
+    pr = PullRequest.objects.get(project=user_story.project, ref=user_story.ref)
+    assert pr.status == PullRequest.STATUS_CHANGES_REQUESTED
+
+
+def test_merge_request_update_with_only_approved_reviewer_is_ignored():
+    status = f.UserStoryStatusFactory()
+    other_status = f.UserStoryStatusFactory(project=status.project)
+    user_story = f.UserStoryFactory.create(status=status, project=status.project)
+    user_story.project.webhook_status_map = {"userstory": {"changes_requested": other_status.id}}
+    user_story.project.save()
+
+    payload = {
+        "object_kind": "merge_request",
+        "user": {"username": "testuser"},
+        "project": {"path_with_namespace": "owner/repo", "web_url": "http://example.com/owner/repo"},
+        "object_attributes": {
+            "id": 1,
+            "source_branch": "TG-{}-mi-rama".format(user_story.ref),
+            "url": "http://example.com/owner/repo/merge_requests/1",
+            "action": "update",
+        },
+        "reviewers": [
+            {"id": 7, "username": "areviewer", "state": "approved"},
+        ],
+    }
+
+    ev_hook = event_hooks.MergeRequestEventHook(user_story.project, payload)
+    ev_hook.process_event()
+
+    user_story.refresh_from_db()
+    assert user_story.status_id == status.id
+
+
 #
 # PUSH EVENT: rama creada (GitLab no manda `create`, viaja dentro del Push Hook con before en ceros)
 #
