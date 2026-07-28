@@ -11,12 +11,14 @@ from . import models
 
 logger = logging.getLogger("taiga.changelog")
 
-_MERGE_PR_PREFIX = "Merge pull request"
+# "Merge pull request" es el merge commit de GitHub; "Merge branch " es el de
+# GitLab (y también el de un merge local hecho a mano, igual de deseable filtrarlo).
+_MERGE_PREFIXES = ("Merge pull request", "Merge branch ")
 _REFS_HEADS_PREFIX = "refs/heads/"
 
 
 def _is_merge_commit(commit):
-    return commit.get("message", "").startswith(_MERGE_PR_PREFIX)
+    return commit.get("message", "").startswith(_MERGE_PREFIXES)
 
 
 def _extract_github(payload):
@@ -37,7 +39,9 @@ def _extract_gitlab(payload):
     before = payload.get("before")
     after = payload.get("after")
     project_url = gl_project.get("web_url")
-    compare_url = f"{project_url}/-/compare/{before}...{after}" if project_url else None
+    # compare_url es un URLField NOT NULL: si el payload no trae web_url (borde
+    # raro), "" en vez de None evita un IntegrityError en el webhook.
+    compare_url = f"{project_url}/-/compare/{before}...{after}" if project_url else ""
     commits = payload.get("commits", [])
 
     return {
