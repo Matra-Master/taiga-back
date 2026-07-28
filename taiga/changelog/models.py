@@ -15,10 +15,17 @@ from taiga.base.db.models.fields import JSONField
 
 class ChangelogRepository(models.Model):
     """
-    Configuration of a GitHub repository + branches of interest for a project's
+    Configuration of a repository + branches of interest for a project's
     changelog. This is admin-managed config, not auto-created: a push is only
-    stored (see ChangelogEntry) when its repo+branch matches one of these.
+    stored (see ChangelogEntry) when its platform+repo+branch matches one of these.
     """
+    PLATFORM_GITHUB = "github"
+    PLATFORM_GITLAB = "gitlab"
+    PLATFORM_CHOICES = (
+        (PLATFORM_GITHUB, _("GitHub")),
+        (PLATFORM_GITLAB, _("GitLab")),
+    )
+
     project = models.ForeignKey(
         "projects.Project",
         null=False, blank=False,
@@ -26,10 +33,17 @@ class ChangelogRepository(models.Model):
         verbose_name=_("project"),
         on_delete=models.CASCADE,
     )
+    # ponytail: "github" por default porque el changelog nació GitHub-only;
+    # las filas ya existentes (creadas antes de este campo) quedan como GitHub.
+    platform = models.CharField(
+        max_length=20, null=False, blank=False,
+        choices=PLATFORM_CHOICES, default=PLATFORM_GITHUB,
+        verbose_name=_("platform"),
+    )
     full_name = models.TextField(
         null=False, blank=False,
         verbose_name=_("repository full name"),
-        help_text=_("GitHub repository, e.g. \"my-org/my-repo\""),
+        help_text=_("Repository, e.g. \"my-org/my-repo\""),
     )
     branches = ArrayField(
         models.TextField(),
@@ -45,7 +59,10 @@ class ChangelogRepository(models.Model):
         verbose_name = "changelog repository"
         verbose_name_plural = "changelog repositories"
         ordering = ["project", "full_name"]
-        unique_together = ("project", "full_name")
+        # El mismo full_name puede existir en dos plataformas distintas (ej.
+        # "acme/webapp" como repo de GitHub Y como repo de GitLab) -> platform
+        # forma parte de la clave, si no dos repos legítimos chocarían entre sí.
+        unique_together = ("project", "platform", "full_name")
 
     def __str__(self):
         return f"{self.full_name} ({self.project})"

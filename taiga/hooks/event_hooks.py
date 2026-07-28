@@ -5,8 +5,10 @@
 #
 # Copyright (c) 2021-present Kaleidos INC
 
+import logging
 import re
 
+from django.conf import settings
 from django.utils.translation import gettext as _
 from django.contrib.auth import get_user_model
 from taiga.projects.models import IssueStatus, TaskStatus, UserStoryStatus, EpicStatus, ProjectModulesConfig
@@ -21,12 +23,17 @@ from taiga.users.models import AuthData
 
 from taiga.base.utils import json
 
+logger = logging.getLogger("taiga.hooks")
+
 
 ISSUE_ACTION_CREATE = "ISSUE_CREATE"
 ISSUE_ACTION_UPDATE = "ISSUE_UPDATE"
 ISSUE_ACTION_DELETE = "ISSUE_DELETE"
 ISSUE_ACTION_CLOSE = "ISSUE_CLOSE"
 ISSUE_ACTION_REOPEN = "ISSUE_REOPEN"
+
+# TG-<ref> tal como aparece en nombres de rama (create/pull_request(_review)/merge_request)
+TG_REF_RE = re.compile(r"TG-(\d+)", re.IGNORECASE)
 
 
 class BaseEventHook:
@@ -406,3 +413,69 @@ class BasePushEventHook(BaseEventHook):
                                          user=self.get_user(commit['user_id'], self.platform_slug))
                 send_notifications(element, history=snapshot)
                 consumed_refs.append(ref)
+
+
+class BaseStatusTransitionMixin():
+    """Mueve un US/Issue de columna según `project.webhook_status_map` y deja
+    rastro en el historial a nombre de RuloBot. Compartida entre proveedores
+    (GitHub/GitLab, ver sus event_hooks.py): cada uno solo aporta su propio
+    `platform_slug` (usado como fallback del usuario bot y ya presente en
+    BaseEventHook) y decide qué event_key dispara desde su propio payload.
+    """
+    # Task/Epic quedan afuera a propósito: el pedido original solo cubre US e Issues.
+    _TRANSITION_TARGETS = {
+        UserStory: ("userstory", UserStoryStatus),
+        Issue: ("issue", IssueStatus),
+    }
+
+    def get_rulobot_user(self):
+        """Usuario que figura como autor de las transiciones automáticas de columna.
+
+        Configurable vía settings.RULOBOT_USER_ID; si no está seteado o no existe, se
+        cae al usuario de sistema del proveedor que disparó el evento (github-*/gitlab-*).
+        """
+        User = get_user_model()
+        bot_id = getattr(settings, "RULOBOT_USER_ID", None)
+        user = User.objects.filter(id=bot_id).first() if bot_id else None
+        if user is None:
+            user = User.objects.filter(is_system=True, username__startswith=self.platform_slug).first()
+        return user
+
+    def _find_entity(self, tg_ref):
+        for Model in [UserStory, Issue, Task, Epic]:
+            try:
+                return Model.objects.get(project=self.project, ref=tg_ref)
+            except Model.DoesNotExist:
+                continue
+        return None
+
+    def _transition(self, entity, event_key, reason):
+        target = self._TRANSITION_TARGETS.get(type(entity))
+        if target is None:
+            return
+
+        map_key, StatusClass = target
+        status_map = (entity.project.webhook_status_map or {}).get(map_key) or {}
+        status_id = status_map.get(event_key)
+        if not status_id:
+            return  # sin configurar para este evento -> no se mueve
+
+        status = StatusClass.objects.filter(project=entity.project, id=status_id).first()
+        if status is None:
+            logger.warning(
+                "webhook_status_map: status id %s no existe (project=%s, event=%s)",
+                status_id, entity.project_id, event_key,
+            )
+            return
+
+        if entity.status_id == status.id:
+            return  # ya está ahí, evita un entry de historial vacío
+
+        entity.status = status
+        entity.save()
+
+        comment = _("RuloBot moved this to **{status}** ({reason}).").format(
+            status=status.name, reason=reason,
+        )
+        snapshot = take_snapshot(entity, comment=comment, user=self.get_rulobot_user())
+        send_notifications(entity, history=snapshot)

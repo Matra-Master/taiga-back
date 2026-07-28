@@ -12,6 +12,7 @@ from taiga.base.api import serializers
 class ChangelogRepositorySerializer(serializers.LightSerializer):
     id = Field()
     project = Field(attr="project_id")
+    platform = Field()
     full_name = Field()
     branches = Field()
     created_date = Field()

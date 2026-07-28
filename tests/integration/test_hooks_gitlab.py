@@ -21,12 +21,13 @@ from taiga.projects import choices as project_choices
 from taiga.projects.epics.models import Epic
 from taiga.projects.issues.models import Issue
 from taiga.projects.tasks.models import Task
-from taiga.projects.userstories.models import UserStory
+from taiga.projects.userstories.models import UserStory, PullRequest
 from taiga.projects.models import Membership
 from taiga.projects.history.services import get_history_queryset_by_model_instance, take_snapshot
 from taiga.projects.notifications.choices import NotifyLevel
 from taiga.projects.notifications.models import NotifyPolicy
 from taiga.projects import services
+from taiga.changelog.models import ChangelogEntry
 from .. import factories as f
 
 pytestmark = pytest.mark.django_db
@@ -1469,3 +1470,310 @@ def test_signal_handlers_move_on_destroy_with_different_assigned_status(client):
     assert response.status_code == 204
     assert project.issue_statuses.count() == 3
     assert modules_config.config.get("gitlab", {}).get("close_status", None) == close_status_3.id
+
+
+#
+# MERGE REQUEST EVENTS (equivalente GitLab de PullRequestEventHook/PullRequestReviewEventHook de GitHub)
+#
+def test_merge_request_event_open_moves_user_story_to_configured_status():
+    open_status = f.UserStoryStatusFactory()
+    review_status = f.UserStoryStatusFactory(project=open_status.project)
+    user_story = f.UserStoryFactory.create(status=open_status, project=open_status.project)
+    user_story.project.webhook_status_map = {"userstory": {"pr_open": review_status.id}}
+    user_story.project.save()
+
+    payload = {
+        "object_kind": "merge_request",
+        "user": {"username": "testuser"},
+        "project": {"path_with_namespace": "owner/repo", "web_url": "http://example.com/owner/repo"},
+        "object_attributes": {
+            "id": 123,
+            "source_branch": "TG-{}-mi-rama".format(user_story.ref),
+            "url": "http://example.com/owner/repo/merge_requests/1",
+            "action": "open",
+        },
+    }
+
+    ev_hook = event_hooks.MergeRequestEventHook(user_story.project, payload)
+    ev_hook.process_event()
+
+    user_story.refresh_from_db()
+    assert user_story.status_id == review_status.id
+
+    pr = PullRequest.objects.get(project=user_story.project, ref=user_story.ref)
+    assert pr.status == PullRequest.STATUS_OPEN
+
+
+def test_merge_request_all_merged_waits_for_every_pr():
+    review_status = f.UserStoryStatusFactory()
+    testing_status = f.UserStoryStatusFactory(project=review_status.project)
+    user_story = f.UserStoryFactory.create(status=review_status, project=review_status.project)
+    user_story.project.webhook_status_map = {"userstory": {"all_merged": testing_status.id}}
+    user_story.project.save()
+
+    # Un MR de este mismo ticket sigue abierto
+    f.PullRequestFactory(
+        project=user_story.project,
+        ref=user_story.ref,
+        pull_request_url="http://example.com/owner/repo/merge_requests/1",
+        status=PullRequest.STATUS_OPEN,
+    )
+
+    payload = {
+        "object_kind": "merge_request",
+        "user": {"username": "testuser"},
+        "project": {"path_with_namespace": "owner/repo", "web_url": "http://example.com/owner/repo"},
+        "object_attributes": {
+            "id": 2,
+            "source_branch": "TG-{}-mi-rama".format(user_story.ref),
+            "url": "http://example.com/owner/repo/merge_requests/2",
+            "action": "merge",
+        },
+    }
+
+    ev_hook = event_hooks.MergeRequestEventHook(user_story.project, payload)
+    ev_hook.process_event()
+
+    user_story.refresh_from_db()
+    assert user_story.status_id == review_status.id  # no se movió, falta un MR
+
+
+def test_merge_request_all_merged_triggers_when_last_pr_merges():
+    review_status = f.UserStoryStatusFactory()
+    testing_status = f.UserStoryStatusFactory(project=review_status.project)
+    user_story = f.UserStoryFactory.create(status=review_status, project=review_status.project)
+    user_story.project.webhook_status_map = {"userstory": {"all_merged": testing_status.id}}
+    user_story.project.save()
+
+    # El otro MR de este ticket ya está mergeado
+    f.PullRequestFactory(
+        project=user_story.project,
+        ref=user_story.ref,
+        pull_request_url="http://example.com/owner/repo/merge_requests/1",
+        status=PullRequest.STATUS_MERGED,
+    )
+
+    payload = {
+        "object_kind": "merge_request",
+        "user": {"username": "testuser"},
+        "project": {"path_with_namespace": "owner/repo", "web_url": "http://example.com/owner/repo"},
+        "object_attributes": {
+            "id": 2,
+            "source_branch": "TG-{}-mi-rama".format(user_story.ref),
+            "url": "http://example.com/owner/repo/merge_requests/2",
+            "action": "merge",
+        },
+    }
+
+    ev_hook = event_hooks.MergeRequestEventHook(user_story.project, payload)
+    ev_hook.process_event()
+
+    user_story.refresh_from_db()
+    assert user_story.status_id == testing_status.id
+
+
+def test_merge_request_unapproved_moves_us_and_marks_pr():
+    review_status = f.UserStoryStatusFactory()
+    rework_status = f.UserStoryStatusFactory(project=review_status.project)
+    user_story = f.UserStoryFactory.create(status=review_status, project=review_status.project)
+    user_story.project.webhook_status_map = {"userstory": {"changes_requested": rework_status.id}}
+    user_story.project.save()
+
+    f.PullRequestFactory(
+        project=user_story.project,
+        ref=user_story.ref,
+        pull_request_url="http://example.com/owner/repo/merge_requests/1",
+        branch_name="TG-{}-mi-rama".format(user_story.ref),
+        status=PullRequest.STATUS_OPEN,
+    )
+
+    payload = {
+        "object_kind": "merge_request",
+        "user": {"username": "testuser"},
+        "project": {"path_with_namespace": "owner/repo", "web_url": "http://example.com/owner/repo"},
+        "object_attributes": {
+            "id": 1,
+            "source_branch": "TG-{}-mi-rama".format(user_story.ref),
+            "url": "http://example.com/owner/repo/merge_requests/1",
+            "action": "unapproved",
+        },
+    }
+
+    ev_hook = event_hooks.MergeRequestEventHook(user_story.project, payload)
+    ev_hook.process_event()
+
+    user_story.refresh_from_db()
+    assert user_story.status_id == rework_status.id
+
+    pr = PullRequest.objects.get(project=user_story.project, ref=user_story.ref)
+    assert pr.status == PullRequest.STATUS_CHANGES_REQUESTED
+
+
+def test_merge_request_update_action_is_ignored():
+    status = f.UserStoryStatusFactory()
+    other_status = f.UserStoryStatusFactory(project=status.project)
+    user_story = f.UserStoryFactory.create(status=status, project=status.project)
+    user_story.project.webhook_status_map = {"userstory": {"pr_open": other_status.id}}
+    user_story.project.save()
+
+    payload = {
+        "object_kind": "merge_request",
+        "user": {"username": "testuser"},
+        "project": {"path_with_namespace": "owner/repo", "web_url": "http://example.com/owner/repo"},
+        "object_attributes": {
+            "id": 1,
+            "source_branch": "TG-{}-mi-rama".format(user_story.ref),
+            "url": "http://example.com/owner/repo/merge_requests/1",
+            "action": "update",
+        },
+    }
+
+    ev_hook = event_hooks.MergeRequestEventHook(user_story.project, payload)
+    ev_hook.process_event()
+
+    user_story.refresh_from_db()
+    assert user_story.status_id == status.id
+
+
+def test_merge_request_reviewer_requested_changes_moves_us_and_marks_pr():
+    # El botón "Request changes" del dropdown de reviewer (distinto de
+    # "Unapprove") no dispara una acción propia: viaja como action=="update"
+    # con el reviewer en estado "requested_changes" dentro del array
+    # `reviewers` de nivel raíz del payload.
+    review_status = f.UserStoryStatusFactory()
+    rework_status = f.UserStoryStatusFactory(project=review_status.project)
+    user_story = f.UserStoryFactory.create(status=review_status, project=review_status.project)
+    user_story.project.webhook_status_map = {"userstory": {"changes_requested": rework_status.id}}
+    user_story.project.save()
+
+    f.PullRequestFactory(
+        project=user_story.project,
+        ref=user_story.ref,
+        pull_request_url="http://example.com/owner/repo/merge_requests/1",
+        branch_name="TG-{}-mi-rama".format(user_story.ref),
+        status=PullRequest.STATUS_OPEN,
+    )
+
+    payload = {
+        "object_kind": "merge_request",
+        "user": {"username": "testuser"},
+        "project": {"path_with_namespace": "owner/repo", "web_url": "http://example.com/owner/repo"},
+        "object_attributes": {
+            "id": 1,
+            "source_branch": "TG-{}-mi-rama".format(user_story.ref),
+            "url": "http://example.com/owner/repo/merge_requests/1",
+            "action": "update",
+        },
+        "reviewers": [
+            {"id": 7, "username": "areviewer", "state": "requested_changes"},
+        ],
+    }
+
+    ev_hook = event_hooks.MergeRequestEventHook(user_story.project, payload)
+    ev_hook.process_event()
+
+    user_story.refresh_from_db()
+    assert user_story.status_id == rework_status.id
+
+    pr = PullRequest.objects.get(project=user_story.project, ref=user_story.ref)
+    assert pr.status == PullRequest.STATUS_CHANGES_REQUESTED
+
+
+def test_merge_request_update_with_only_approved_reviewer_is_ignored():
+    status = f.UserStoryStatusFactory()
+    other_status = f.UserStoryStatusFactory(project=status.project)
+    user_story = f.UserStoryFactory.create(status=status, project=status.project)
+    user_story.project.webhook_status_map = {"userstory": {"changes_requested": other_status.id}}
+    user_story.project.save()
+
+    payload = {
+        "object_kind": "merge_request",
+        "user": {"username": "testuser"},
+        "project": {"path_with_namespace": "owner/repo", "web_url": "http://example.com/owner/repo"},
+        "object_attributes": {
+            "id": 1,
+            "source_branch": "TG-{}-mi-rama".format(user_story.ref),
+            "url": "http://example.com/owner/repo/merge_requests/1",
+            "action": "update",
+        },
+        "reviewers": [
+            {"id": 7, "username": "areviewer", "state": "approved"},
+        ],
+    }
+
+    ev_hook = event_hooks.MergeRequestEventHook(user_story.project, payload)
+    ev_hook.process_event()
+
+    user_story.refresh_from_db()
+    assert user_story.status_id == status.id
+
+
+#
+# PUSH EVENT: rama creada (GitLab no manda `create`, viaja dentro del Push Hook con before en ceros)
+#
+def test_push_event_branch_created_moves_user_story(settings):
+    settings.RULOBOT_USER_ID = None  # cae al usuario de sistema "gitlab-*"
+
+    review_status = f.UserStoryStatusFactory()
+    in_progress_status = f.UserStoryStatusFactory(project=review_status.project)
+    user_story = f.UserStoryFactory.create(status=review_status, project=review_status.project)
+    user_story.project.webhook_status_map = {"userstory": {"branch": in_progress_status.id}}
+    user_story.project.save()
+    take_snapshot(user_story, user=user_story.project.owner)  # baseline, como el resto de los hooks
+
+    payload = deepcopy(push_base_payload)
+    payload["before"] = "0" * 40
+    payload["ref"] = "refs/heads/TG-{}-mi-rama".format(user_story.ref)
+    payload["commits"] = []
+
+    ev_hook = event_hooks.PushEventHook(user_story.project, payload)
+    ev_hook.process_event()
+
+    user_story.refresh_from_db()
+    assert user_story.status_id == in_progress_status.id
+
+    history = get_history_queryset_by_model_instance(user_story)
+    assert history.count() == 1
+    assert "RuloBot" in history[0].comment
+
+
+def test_push_event_normal_push_does_not_trigger_branch_transition():
+    status = f.UserStoryStatusFactory()
+    other_status = f.UserStoryStatusFactory(project=status.project)
+    user_story = f.UserStoryFactory.create(status=status, project=status.project)
+    user_story.project.webhook_status_map = {"userstory": {"branch": other_status.id}}
+    user_story.project.save()
+
+    payload = deepcopy(push_base_payload)
+    payload["ref"] = "refs/heads/TG-{}-mi-rama".format(user_story.ref)
+    payload["commits"] = []
+    # before != 40 ceros -> no es una rama nueva
+
+    ev_hook = event_hooks.PushEventHook(user_story.project, payload)
+    ev_hook.process_event()
+
+    user_story.refresh_from_db()
+    assert user_story.status_id == status.id
+
+
+#
+# PUSH EVENT: changelog (store_push generalizado para el shape de payload de GitLab)
+#
+def test_push_event_stores_changelog_entry_for_gitlab_payload():
+    project = f.ProjectFactory()
+    repo = f.ChangelogRepositoryFactory(
+        project=project, platform="gitlab", full_name="mike/diaspora", branches=["master"],
+    )
+
+    payload = deepcopy(push_base_payload)
+
+    ev_hook = event_hooks.PushEventHook(project, payload)
+    ev_hook.process_event()
+
+    entry = ChangelogEntry.objects.get(repository=repo, after_sha=payload["after"])
+    assert entry.branch == "master"
+    assert entry.pusher_name == "John Smith"
+    assert entry.compare_url == "http://example.com/mike/diaspora/-/compare/{}...{}".format(
+        payload["before"], payload["after"],
+    )
+    assert len(entry.commits) == 2
