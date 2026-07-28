@@ -154,6 +154,47 @@ def test_store_push_disambiguates_same_full_name_across_platforms():
     assert gitlab_entry.repository_id == gitlab_repo.id
 
 
+def test_store_push_filters_gitlab_merge_commits():
+    # GitLab's merge commits say "Merge branch 'x' into 'main'", not GitHub's
+    # "Merge pull request" - both prefixes must be excluded from the changelog.
+    repo = f.ChangelogRepositoryFactory(platform="gitlab", full_name="mike/diaspora", branches=["main"])
+    payload = {
+        "ref": "refs/heads/main",
+        "before": "2aa7167adabb3a26e213e4f6572bb068e271bb51",
+        "after": "7b3aa2fba1db58f0297e14f669fcb0ca1520cd14",
+        "user_name": "Mike",
+        "project": {"path_with_namespace": "mike/diaspora", "web_url": "https://gitlab.com/mike/diaspora"},
+        "commits": [
+            _make_commit("feat: primer", "https://gitlab.com/mike/diaspora/commit/8fe35a2"),
+            _make_commit("Merge branch 'feature' into 'main'", "https://gitlab.com/mike/diaspora/commit/0f77d58"),
+        ],
+    }
+
+    entry = services.store_push(repo.project, payload, platform_slug="gitlab")
+
+    assert len(entry.commits) == 1
+    assert entry.commits[0]["message"] == "feat: primer"
+
+
+def test_store_push_handles_gitlab_payload_without_web_url():
+    # Edge case: no project.web_url in the payload -> compare_url can't be built.
+    # "" instead of None avoids an IntegrityError against the NOT NULL URLField.
+    repo = f.ChangelogRepositoryFactory(platform="gitlab", full_name="mike/diaspora", branches=["main"])
+    payload = {
+        "ref": "refs/heads/main",
+        "before": "2aa7167adabb3a26e213e4f6572bb068e271bb51",
+        "after": "7b3aa2fba1db58f0297e14f669fcb0ca1520cd14",
+        "user_name": "Mike",
+        "project": {"path_with_namespace": "mike/diaspora"},
+        "commits": [_make_commit("feat: primer", "https://gitlab.com/mike/diaspora/commit/8fe35a2")],
+    }
+
+    entry = services.store_push(repo.project, payload, platform_slug="gitlab")
+
+    assert entry is not None
+    assert entry.compare_url == ""
+
+
 def test_push_event_hook_still_stores_changelog_entry():
     # End-to-end through the real GitHub push event hook (not just the
     # service): confirms the hook keeps running its existing TG-<n>
