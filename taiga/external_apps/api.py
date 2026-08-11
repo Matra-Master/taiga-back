@@ -66,6 +66,15 @@ class ApplicationToken(ModelCrudViewSet):
         return queryset
 
     @list_route(methods=["POST"])
+    def me(self, request, pk=None):
+        if self.request.user.is_anonymous:
+            raise exc.NotAuthenticated(_("Authentication required"))
+
+        application_token = services.get_or_create_personal_token(request.user)
+        access_token_data = serializers.AccessTokenSerializer(application_token).data
+        return response.Ok(access_token_data)
+
+    @list_route(methods=["POST"])
     def authorize(self, request, pk=None):
         if self.request.user.is_anonymous:
             raise exc.NotAuthenticated(_("Authentication required"))

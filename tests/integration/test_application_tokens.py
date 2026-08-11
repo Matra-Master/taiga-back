@@ -49,6 +49,28 @@ def test_retrieve_unexisting_token_for_application(client):
     assert response.status_code == 404
 
 
+def test_personal_token_is_stable(client):
+    user = f.UserFactory.create()
+    url = reverse("application-tokens-me")
+    client.login(user)
+
+    response = client.json.post(url)
+    assert response.status_code == 200
+    first_token = response.data["token"]
+    assert first_token
+
+    response = client.json.post(url)
+    assert response.status_code == 200
+    assert response.data["token"] == first_token
+    assert models.ApplicationToken.objects.filter(user=user).count() == 1
+
+
+def test_personal_token_requires_authentication(client):
+    url = reverse("application-tokens-me")
+    response = client.json.post(url)
+    assert response.status_code == 401
+
+
 def test_token_authorize(client):
     user = f.UserFactory.create()
     application = f.ApplicationFactory()
