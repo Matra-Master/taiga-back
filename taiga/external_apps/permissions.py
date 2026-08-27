@@ -27,6 +27,7 @@ class CanUseToken(PermissionComponent):
 class ApplicationTokenPermission(TaigaResourcePermission):
     retrieve_perms = IsAuthenticated() & CanUseToken()
     by_application_perms = IsAuthenticated()
+    me_perms = IsAuthenticated()
     create_perms = IsAuthenticated()
     update_perms = IsAuthenticated() & CanUseToken()
     partial_update_perms = IsAuthenticated() & CanUseToken()
