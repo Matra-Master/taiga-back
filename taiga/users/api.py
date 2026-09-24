@@ -42,10 +42,8 @@ from .signals import user_cancel_account as user_cancel_account_signal
 from .signals import user_change_email as user_change_email_signal
 from .throttling import UserDetailRateThrottle, UserUpdateRateThrottle
 
-from settings.common import user_url, start_timer_url, user_workspace_url
-import requests as rq
-import json
-import datetime
+from . import kimai
+
 
 class UsersViewSet(ModelCrudViewSet):
     permission_classes = (permissions.UserPermission,)
@@ -456,128 +454,64 @@ class UsersViewSet(ModelCrudViewSet):
 
         return response.Ok(response_data)
 
-    @list_route(methods=["POST"])
-    def start_clockify_timer(self, request, pk=None):
+    def _kimai_project_for(self, request, data):
         from taiga.projects.models import Project
-        from taiga.projects.epics.models import Epic
-        
-        data = {
-            "customAttributes": [],
-            "customFields": []
-        }
-        session = rq.Session()
-        uuid = request.DATA.get('uuid', None)
-        tg_id = request.DATA.get('usRef', None)
-        tg_subject = request.DATA.get('subject', None)
-        tg_task_id = request.DATA.get('taskRef', None)
-        tagIds = request.DATA.get('tagIds', [])
-        
-        project_id = request.DATA.get('projectId', None)
-        epic_id = request.DATA.get('epicId', None)
-
-        if(uuid is None):
-            return response.BadRequest({"error_message": "uuid must be sended"})
-        
-        if(project_id is None):
-            return response.BadRequest({"error_message": "projectId must be provided"})
-
         try:
-            project = Project.objects.get(id=project_id)
-        except Project.DoesNotExist:
-            return response.BadRequest({"error_message": "Project not found"})
+            project_id = int(data.get("projectId"))
+            epic_id = data.get("epicId")
+            epic_id = int(epic_id) if epic_id not in (None, "") else None
+        except (TypeError, ValueError):
+            raise kimai.KimaiError("projectId and epicId must be integers")
+        project = Project.objects.filter(id=project_id, memberships__user=request.user).first()
+        if project is None:
+            raise kimai.KimaiError("Project not found")
+        return kimai.resolve_kimai_project(project, epic_id)
 
-        if(len(tagIds)):
-            data["tagIds"] = tagIds
+    @list_route(methods=["GET"])
+    def kimai_projects(self, request, pk=None):
+        self.check_permissions(request, "kimai", None)
+        try:
+            return response.Ok(kimai.list_projects(request.user))
+        except kimai.KimaiError as e:
+            return response.BadRequest({"error_message": str(e)})
 
-        task_description_id = ""
-        if(tg_task_id != ""):
-             task_description_id = f" - #{tg_task_id}"
-        clockify_description = f"TG-{tg_id or ''}{task_description_id} {tg_subject or ''}"
-
-        clockify_project_id = None
-        
-        if project.tracking_mode == 'project':
-            clockify_project_id = project.clockify_id
-        elif project.tracking_mode == 'epic':
-            if epic_id is None:
-                return response.BadRequest({"error_message": "epicId is required when project tracking mode is 'epic'"})
-            
-            try:
-                epic = Epic.objects.get(id=epic_id)
-                clockify_project_id = epic.clockify_project_id
-            except Epic.DoesNotExist:
-                return response.BadRequest({"error_message": "Epic not found"})
-            
-            if not clockify_project_id:
-                return response.BadRequest({"error_message": "Epic does not have a clockify_project_id configured"})
-
-        if not clockify_project_id:
-            return response.BadRequest({"error_message": "No clockify project ID available for tracking"})
-
-        clockify_key = self.model.objects.get(uuid=uuid).clockify_key
-        if (clockify_key is None):
-            return response.BadRequest({"error_message": "Clockify key must be set on profile config"})
-        session.headers["X-Api-Key"] = clockify_key
-        session.headers["Content-Type"] = "application/json"
-
-        data["description"] = clockify_description
-        data["billable"] = False
-        data["projectId"] = clockify_project_id
-
-        clockify_response = session.post(start_timer_url, json = data)
-        if(clockify_response.ok):
-            return response.Ok({
-                "message": "Clockify time entry started",
-                "tracking_mode": project.tracking_mode,
-                "clockify_project_id": clockify_project_id
-            })
-        else:
-            return response.BadRequest({"error_message": clockify_response.json().get('message',"")})
+    @list_route(methods=["GET"])
+    def kimai_activities(self, request, pk=None):
+        self.check_permissions(request, "kimai", None)
+        try:
+            kimai_project_id = self._kimai_project_for(request, request.QUERY_PARAMS)
+            return response.Ok(kimai.list_activities(request.user, kimai_project_id))
+        except kimai.KimaiError as e:
+            return response.BadRequest({"error_message": str(e)})
 
     @list_route(methods=["POST"])
-    def stop_clockify_timer(self, request, pk=None):
-        session = rq.Session()
-        uuid = request.DATA.get('uuid',None)
+    def start_kimai_timer(self, request, pk=None):
+        self.check_permissions(request, "kimai", None)
+        activity_id = request.DATA.get("activityId")
+        if not activity_id:
+            return response.BadRequest({"error_message": "activityId must be provided"})
 
-        if(uuid is None):
-            return response.BadRequest({"error_message": "UUID must be sended"})
+        us_ref = request.DATA.get("usRef") or ""
+        task_ref = request.DATA.get("taskRef") or ""
+        subject = request.DATA.get("subject") or ""
+        task_description_id = f" - #{task_ref}" if task_ref else ""
+        description = f"TG-{us_ref}{task_description_id} {subject}"
 
         try:
-           user = self.model.objects.get(uuid=uuid)
-        except models.User.DoesNotExist:
-            raise exc.WrongArguments(_("There is no user with that UUID"))
-        clockify_key = user.clockify_key
-        if (clockify_key is None):
-            return response.BadRequest({"error_message": "Clockify key must be set on profile config"})
-        session.headers["X-Api-Key"] = clockify_key
-        session.headers["Content-Type"] = "application/json"
-        
+            kimai_project_id = self._kimai_project_for(request, request.DATA)
+            kimai.start(request.user, kimai_project_id, activity_id, description, request.DATA.get("tags") or [])
+        except kimai.KimaiError as e:
+            return response.BadRequest({"error_message": str(e)})
+        return response.Ok({"message": "Kimai timesheet started", "kimai_project_id": kimai_project_id})
 
-        if(user.clockify_id is None):
-            user_data_clocki_response = session.get(user_url)
-            if(not user_data_clocki_response.ok):
-                return response.BadRequest({"error_message": user_data_clocki_response.json().get('message',"")})
-
-            user.clockify_id = user_data_clocki_response.json()['id']
-            user.save()
-        user_id = user.clockify_id
-
-        time_entries_url = f"{user_workspace_url}/{user_id}/time-entries"
-
-        time_entires_response = session.get(time_entries_url)
-        if (not time_entires_response.ok):
-            return response.BadRequest({"error_message": time_entires_response.json().get('message',"")})
-        time_entires = time_entires_response.json()
-        last_time_entrie = time_entires[0]
-
-        stop_timer_data = {
-            "end": datetime.datetime.now().isoformat(timespec='seconds')+"Z"
-        }
-        stop_response = session.patch(time_entries_url,json=stop_timer_data)
-        if(stop_response.ok):
-            return response.Ok({"message": "Clockify timer stoped"})
-        else: 
-            return response.BadRequest({"error_message": stop_response.json().get('message',"")})
+    @list_route(methods=["POST"])
+    def stop_kimai_timer(self, request, pk=None):
+        self.check_permissions(request, "kimai", None)
+        try:
+            stopped = kimai.stop_active(request.user)
+        except kimai.KimaiError as e:
+            return response.BadRequest({"error_message": str(e)})
+        return response.Ok({"message": "Kimai timer stopped", "stopped": stopped})
 
 ######################################################
 # Role
