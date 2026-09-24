@@ -32,19 +32,13 @@ DATABASES = {
     }
 }
 
-TUXDI_CLOKIFY_WORKSPACE_ID = "5d9cd853c9fde903181d0f4a" #* ElRealUno
-#TUXDI_CLOKIFY_WORKSPACE_ID = "66fea5d3e020e6093415ba1d"
-
 # Id del usuario Taiga que figura como autor de las transiciones de columna
 # automáticas disparadas por el webhook de GitHub (ver taiga/hooks/github/event_hooks.py).
 # None = sin bot configurado; se cae al usuario de sistema "github-*" existente.
 RULOBOT_USER_ID = None
 
-clockify_url = "https://api.clockify.me/api/v1"
-
-start_timer_url = f"{clockify_url}/workspaces/{TUXDI_CLOKIFY_WORKSPACE_ID}/time-entries"
-user_url = f"{clockify_url}/user"
-user_workspace_url = f"{clockify_url}/workspaces/{TUXDI_CLOKIFY_WORKSPACE_ID}/user"
+# URL base de la instancia de Kimai (time tracking), sin "/api" al final.
+KIMAI_URL = os.environ.get("KIMAI_URL", "")
 
 DEFAULT_AUTO_FIELD = "django.db.models.AutoField"
 

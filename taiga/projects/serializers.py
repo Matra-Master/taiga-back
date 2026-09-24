@@ -288,7 +288,7 @@ class ProjectSerializer(serializers.LightSerializer):
 
     tags = Field()
     tags_colors = MethodField()
-    clockify_id = Field()
+    kimai_project_id = Field()
     tracking_mode = Field()
 
     default_epic_status = Field(attr="default_epic_status_id")

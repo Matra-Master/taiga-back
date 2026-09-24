@@ -110,7 +110,7 @@ class ProjectViewSet(LikedResourceMixin, HistoryResourceMixin,
         except models.Project.DoesNotExist:
             return response.BadRequest(_("Target project with ID 11 does not exist"))
         epic_data = {
-            'clockify_project_id': request.DATA.get('clockify_id', None),
+            'kimai_project_id': request.DATA.get('kimai_project_id', None),
             'color': request.DATA.get('color', '#CFD350'),
             'description': request.DATA.get('description', ''),
             'project': 11,

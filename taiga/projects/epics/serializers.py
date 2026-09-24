@@ -42,7 +42,7 @@ class EpicListSerializer(VoteResourceSerializerMixin, WatchedResourceSerializer,
     blocked_note = Field()
     is_closed = MethodField()
     user_stories_counts = MethodField()
-    clockify_project_id = Field()
+    kimai_project_id = Field()
 
     def get_is_closed(self, obj):
         return obj.status is not None and obj.status.is_closed

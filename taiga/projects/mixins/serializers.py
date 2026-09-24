@@ -89,7 +89,7 @@ class ProjectExtraInfoSerializerMixin(serializers.LightSerializer):
                 "slug": obj.project.slug,
                 "logo_small_url": services.get_logo_small_thumbnail_url(obj.project),
                 "id": obj.project_id,
-                "clockify_id": obj.project.clockify_id,
+                "kimai_project_id": obj.project.kimai_project_id,
             }
             self._serialized_project[obj.project_id] = serialized_project
 

@@ -178,8 +178,7 @@ class User(AbstractBaseUser, PermissionsMixin):
                                                                          "different users for all owned "
                                                                          "public project"))
 
-    clockify_key = models.CharField(max_length=48, editable=True, null=True, unique=True)
-    clockify_id = models.CharField(max_length=24, editable=True, null=True)
+    kimai_token = models.CharField(max_length=255, null=True, blank=True, verbose_name=_("kimai api token"))
     _cached_memberships = None
     _cached_liked_ids = None
     _cached_watched_ids = None

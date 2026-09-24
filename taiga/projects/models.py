@@ -289,7 +289,7 @@ class Project(ProjectDefaults, TaggedMixin, TagsColorsMixin, models.Model):
     total_activity_last_year = models.PositiveIntegerField(null=False, blank=False, default=0,
                                                            verbose_name=_("activity last year"),
                                                            db_index=True)
-    clockify_id = models.CharField(max_length=36, editable=True, null=True)
+    kimai_project_id = models.PositiveIntegerField(null=True, blank=True, verbose_name=_("kimai project id"))
     
     TRACKING_MODE_CHOICES = [
         ('project', _('Track by Project')),
