@@ -47,7 +47,6 @@ def test_start_kimai_timer(client, kimai, tracking_mode):
         "project": 7 if tracking_mode == "project" else 9,
         "activity": 3,
         "description": "TG-12 - #15 Hola",
-        "billable": False,
         "tags": "BF-QA",
     }
 
@@ -87,6 +86,23 @@ def test_stop_kimai_timer_stops_every_active_timesheet(client, kimai):
         ("PATCH", "https://kimai.test/api/timesheets/4/stop"),
         ("PATCH", "https://kimai.test/api/timesheets/5/stop"),
     ]
+
+
+def test_kimai_validation_errors_are_detailed(client, kimai):
+    project = f.ProjectFactory.create(kimai_project_id=7)
+    user = _member(project)
+    errors = {"errors": ["This form should not contain extra fields."],
+              "children": {"activity": {"errors": ["This value is not valid."]}, "project": {}}}
+    kimai.return_value = mock.Mock(ok=False, status_code=400, content=b"x",
+                                   json=mock.Mock(return_value={"message": "Validation Failed", "errors": errors}))
+
+    client.login(user)
+    data = {"projectId": project.id, "activityId": 9}
+    res = client.post(reverse("users-start-kimai-timer"), json.dumps(data), content_type="application/json")
+
+    assert res.status_code == 400
+    assert res.data["error_message"] == ("Validation Failed: This form should not contain extra fields.; "
+                                         "activity: This value is not valid.")
 
 
 def test_kimai_token_is_not_public(client):

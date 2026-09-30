@@ -23,11 +23,25 @@ def _request(user, method, path, **kwargs):
 
     if not res.ok:
         try:
-            message = res.json().get("message", res.text)
+            body = res.json()
+            message = body.get("message", res.text)
+            details = _form_errors(body.get("errors"))
+            if details:
+                message = f"{message}: {'; '.join(details)}"
         except ValueError:
             message = res.text
         raise KimaiError(message or f"Kimai error {res.status_code}")
     return res.json() if res.content else None
+
+
+def _form_errors(errors, field=None):
+    """Aplana los errores de formulario de Kimai ({"errors": [...], "children": {campo: {...}}})."""
+    if not isinstance(errors, dict):
+        return []
+    found = [f"{field}: {e}" if field else e for e in errors.get("errors", [])]
+    for name, child in (errors.get("children") or {}).items():
+        found += _form_errors(child, name)
+    return found
 
 
 def resolve_kimai_project(project, epic_id=None):
@@ -59,11 +73,12 @@ def list_activities(user, kimai_project_id):
 
 
 def start(user, kimai_project_id, activity_id, description, tags=()):
+    # Sin "billable": Kimai lo rechaza ("extra fields") si el usuario no tiene permiso para editarlo,
+    # y por defecto toma el valor de la actividad/proyecto.
     data = {
         "project": kimai_project_id,
         "activity": activity_id,
         "description": description,
-        "billable": False,
     }
     if tags:
         data["tags"] = ",".join(tags)
